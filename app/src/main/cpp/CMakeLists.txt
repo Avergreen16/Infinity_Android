@@ -10,7 +10,13 @@ project("infinity")
 add_library(infinity SHARED
         main.cpp
         AndroidOut.cpp
-        renderer.cpp)
+        renderer.cpp
+        wrapper.cpp
+        ecs.cpp
+        pnum.cpp
+        core.cpp
+        util.cpp
+        camera.cpp)
 
 # Searches for a package provided by the game activity dependency
 find_package(game-activity REQUIRED CONFIG)
