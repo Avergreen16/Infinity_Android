@@ -59,14 +59,16 @@ void android_main(android_app* app) {
 
     ecs.register_component<Transform>();
     ecs.register_component<Camera>();
+    ecs.register_component<Transform2D>();
+    ecs.register_component<Camera2D>();
 
     app->onAppCmd = handle_cmd;
 
-    Camera camera;
-    Transform transform;
-    camera.fov = 90.0f;
-    transform.position = vec3(0.0f, 1.0f, 1.0f);
-    transform.orientation = create_rot_mat(vec3(0, 0, 1), normalize(vec3(0.0f, 1.0f, 1.0f)));
+    Camera2D camera;
+    Transform2D transform;
+    camera.scale = 16.0f;
+    transform.position = vec2(0.0f);
+    transform.orientation = identity<mat2>();
 
     uint32_t entity = ecs.insert_entity();
     ecs.insert_component(entity, transform);

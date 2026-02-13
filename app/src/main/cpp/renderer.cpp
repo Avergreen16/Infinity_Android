@@ -87,21 +87,14 @@ void Renderer::call() {
     glViewport(0, 0, width, height);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    uint32_t camera = *collectors[1].entities.begin();
-    Transform& t = ecs.get_component<Transform>(camera);
-    Camera& c = ecs.get_component<Camera>(camera);
-
-    mat4 view = mat4(transpose(t.orientation));
-    mat4 model = core.get_model_matrix(pvec3(0.0f), t.position);
-
-    mat4 model_2 = core.get_model_matrix(pvec3(0.0f, fract(core.current_time - core.start_time + 0.5f) - 0.5f, 0.0f), t.position);
-    mat4 model_3 = core.get_model_matrix(pvec3(0.0f, fract(core.current_time - core.start_time) - 0.5f, 0.0f), t.position);
-
     if(!vertices) {
         vertices = std::shared_ptr<Vertices>(new Vertices);
         vertices->init();
     }
 
+    render_background();
+
+    /*
     std::vector<vec3> v = {
             vec3(-0.5f, 0.0f, -0.5f),
             vec3(0.5f, 0.0f, -0.5f),
@@ -133,12 +126,7 @@ void Renderer::call() {
     glUniform4fv(3, 1, &color[0]);
 
     vertices->draw_vertices(GL_TRIANGLES);
-
-    /*core.shaders["grid"]->use();
-    glUniformMatrix4fv(0, 1, false, &c.proj[0][0]);
-    glUniformMatrix4fv(1, 1, false, &view[0][0]);
-    glUniformMatrix4fv(2, 1, false, &model[0][0]);
-    glDrawArrays(GL_TRIANGLES, 0, 6);*/
+    */
 
 
     eglSwapBuffers(display, surface);
