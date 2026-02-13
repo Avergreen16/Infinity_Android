@@ -157,8 +157,8 @@ void Renderer::render_background() {
     vertices->vertex_buffer_data(square.data(), square.size(), sizeof(vec2), GL_STREAM_DRAW);
     vertices->add_vertex_attribute(0, 2, GL_FLOAT, false, sizeof(vec2), 0);
 
-    Transform2D& ct = ecs.get_component<Transform>(camera);
-    Camera2D& cc = ecs.get_component<Camera>(camera);
+    Transform2D& ct = ecs.get_component<Transform2D>(camera);
+    Camera2D& cc = ecs.get_component<Camera2D>(camera);
 
     mat4 inv_rot = mat4(transpose(ct.orientation));
 
