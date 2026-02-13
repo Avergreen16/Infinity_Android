@@ -165,6 +165,7 @@ void Renderer::render_background() {
 
     glUniformMatrix4fv(0, 1, false, &view[0][0]);
     glUniformMatrix4fv(1, 1, false, &proj[0][0]);
+    glUniform2f(2, float(width), float(height));
 
     vertices->draw_vertices(GL_TRIANGLES);
 }

@@ -4,6 +4,7 @@ layout(location = 0) in vec2 position;
 
 layout(location = 0) uniform mat4 view;
 layout(location = 1) uniform mat4 proj;
+layout(location = 2) uniform vec2 screen_size;
 
 layout(location = 0) out vec2 world_coords;
 

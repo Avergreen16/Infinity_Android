@@ -11,6 +11,7 @@ vec3 hex_color(uint i) {
 }
 
 void main() {
+    /*
     vec3 base_color = hex_color(uint(0x1E1F2E));
     vec3 sector_color = hex_color(uint(0xFF893D));
 
@@ -95,4 +96,7 @@ void main() {
     c.rgb = line_a.rgb * line_a.w + c.rgb * (1.0 - line_a.w);
 
     frag_color = c;
+    */
+
+    frag_color = vec4(fract(coords), 0.0, 1.0);
 }
