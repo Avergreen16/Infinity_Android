@@ -143,3 +143,40 @@ void Renderer::call() {
 
     eglSwapBuffers(display, surface);
 }
+
+void Renderer::render_background() {
+    std::vector<vec2> square = {
+            vec2(-1.0f, -1.0f),
+            vec2(1.0f, -1.0f),
+            vec2(1.0f, 1.0f),
+            vec2(-1.0f, -1.0f),
+            vec2(1.0f, 1.0f),
+            vec2(-1.0f, 1.0f)
+    };
+
+    vertices->vertex_buffer_data(square.data(), square.size(), sizeof(vec2), GL_STREAM_DRAW);
+    vertices->add_vertex_attribute(0, 2, GL_FLOAT, false, sizeof(vec2), 0);
+
+    Transform2D& ct = ecs.get_component<Transform>(camera);
+    Camera2D& cc = ecs.get_component<Camera>(camera);
+
+    mat4 inv_rot = mat4(transpose(ct.orientation));
+
+    mat4 view = inv_rot * scale(vec3(cc.scale, cc.scale, 1.0f)) * translate(vec3(-ct.position, 0.0f));
+
+    int width, height;
+    eglQuerySurface(display, surface, EGL_WIDTH, &width);
+    eglQuerySurface(display, surface, EGL_HEIGHT, &height);
+
+    float aspect_ratio = float(height) / width;
+    mat4 proj = scale(vec3(1.0f, 1.0f / aspect_ratio, 1.0f));
+
+    core.shaders["background"]->use();
+
+    vertices->bind();
+
+    glUniformMatrix4fv(0, 1, false, &view[0][0]);
+    glUniformMatrix4fv(1, 1, false, &proj[0][0]);
+
+    vertices->draw_vertices(GL_TRIANGLES);
+}

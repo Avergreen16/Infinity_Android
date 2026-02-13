@@ -11,3 +11,12 @@ struct Camera {
     float fov;
     mat4 proj;
 };
+
+struct Transform2D {
+    vec2 position;
+    mat2 orientation;
+};
+
+struct Camera2D {
+    float scale;
+};

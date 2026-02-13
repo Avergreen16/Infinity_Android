@@ -28,4 +28,6 @@ struct Renderer : System {
     void call();
 
     void terminate();
+
+    void render_background();
 };

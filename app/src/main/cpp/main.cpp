@@ -27,12 +27,10 @@ void handle_cmd(android_app *app, int32_t cmd) {
             core.shaders.clear();
             core.textures.clear();
 
-            core.shaders.emplace("color", std::shared_ptr<Shader>(
-                    new Shader("shaders/color.vert", "shaders/color.frag")));
-            core.shaders.emplace("grid", std::shared_ptr<Shader>(
-                    new Shader("shaders/grid.vert", "shaders/grid.frag")));
-            core.textures.emplace("grid", std::shared_ptr<Texture>(
-                    new Texture("textures/grid.png", {GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE}, 4)));
+            core.shaders.emplace("color", std::shared_ptr<Shader>(new Shader("shaders/color.vert", "shaders/color.frag")));
+            core.shaders.emplace("grid", std::shared_ptr<Shader>(new Shader("shaders/grid.vert", "shaders/grid.frag")));
+            core.shaders.emplace("background", std::shared_ptr<Shader>(new Shader("shaders/background.vert", "shaders/background.frag")));
+            core.textures.emplace("grid", std::shared_ptr<Texture>(new Texture("textures/grid.png", {GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE}, 4)));
             break;
         }
         case APP_CMD_TERM_WINDOW: {
@@ -64,11 +62,11 @@ void android_main(android_app* app) {
 
     app->onAppCmd = handle_cmd;
 
-    Camera camera;
-    Transform transform;
-    camera.fov = 90.0f;
-    transform.position = vec3(0.0f, 1.0f, 1.0f);
-    transform.orientation = create_rot_mat(vec3(0, 0, 1), normalize(vec3(0.0f, 1.0f, 1.0f)));
+    Camera2D camera;
+    Transform2D transform;
+    camera.scale = 16.0f;
+    transform.position = vec2(0.0f, 0.0f);
+    transform.orientation = identity<mat2>();
 
     uint32_t entity = ecs.insert_entity();
     ecs.insert_component(entity, transform);
