@@ -30,4 +30,6 @@ struct Renderer : System {
     void terminate();
 
     void render_background();
+
+    void render_gui();
 };

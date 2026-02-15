@@ -17,7 +17,8 @@ add_library(infinity SHARED
         core.cpp
         util.cpp
         camera.cpp
-        input.cpp)
+        input.cpp
+        gui.cpp)
 
 # Searches for a package provided by the game activity dependency
 find_package(game-activity REQUIRED CONFIG)

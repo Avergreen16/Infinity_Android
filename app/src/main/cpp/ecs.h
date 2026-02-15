@@ -180,6 +180,7 @@ struct Collector {
 
 struct System {
     std::vector<Collector> collectors;
+    virtual void init() {};
     virtual void call() {};
 };
 

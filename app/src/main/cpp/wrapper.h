@@ -15,6 +15,8 @@ using namespace glm;
 
 std::string get_text_from_file(std::string path);
 
+std::vector<uint8_t> get_bytes_from_file(std::string path);
+
 std::vector<uint8_t> get_texture(std::string path, ivec2& size);
 
 struct Shader {

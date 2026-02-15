@@ -1,102 +1,77 @@
 #version 320 es
 
-precision mediump float;
+precision highp float;
+precision highp int;
 
 layout(location = 0) out vec4 frag_color;
 
-layout(location = 0) in vec2 coords;
+layout(location = 0) in vec2 coords2;
+
+layout(location = 2) uniform vec2 screen_size;
 
 vec3 hex_color(uint i) {
-    return vec3((i >> 16) & uint(0xFF), (i >> 8) & uint(0xFF), i & uint(0xFF)) / float(0xFF);
+    return vec3((i >> 16) & 0xFFu, (i >> 8) & 0xFFu, i & 0xFFu) / float(0xFFu);
 }
 
 void main() {
-    /*
-    vec3 base_color = hex_color(uint(0x1E1F2E));
-    vec3 sector_color = hex_color(uint(0xFF893D));
+    vec2 coords = coords2;
+
+    vec3 base_color = hex_color(0x1E1F2Eu);
+    vec3 x_color = hex_color(0xFF4F4Fu);
+    vec3 nx_color = hex_color(0x4FFFFFu);
+    vec3 y_color = hex_color(0x4FFF4Fu);
+    vec3 ny_color = hex_color(0xFF4FFFu);
 
     vec4 c = vec4(base_color, 1.0);
 
     int line_width = 1;
 
-    vec2 dx = dFdx(coords);
-    vec2 dy = dFdy(coords);
 
-    float ddx = length(vec2(dx.x, dy.x));
-    float ddy = length(vec2(dx.y, dy.y));
+    vec2 dx = dFdx(coords);
+    //vec2 dy = dFdy(coords);
+
+    float ddx = fwidth(coords.x);
+    float ddy = fwidth(coords.y);
 
     vec4 line_c = vec4(0.0);
     vec4 line_a = vec4(0.0);
 
+    float width_x = length(dx) * screen_size.x;
 
-    // x direction
-    bool flag = false;
-    vec3 color = base_color * 2.0;
-    if(int(round(coords.x)) % 256 == 0) {
-        color = sector_color;
-        line_width = 2;
-        flag = true;
-    }
-    if(int(round(coords.x)) == 0) {
-        color = hex_color(uint(0xFF5959));
-        line_width = 2;
-        flag = true;
-    }
+    int s = int(round(log2(width_x) * 0.25));
 
-    float dist_from_line = abs(fract(float(coords.x) + 0.5) - 0.5) / float(line_width) * 2.0;
-    float alpha = max(0.0, 1.0 - (ddx / (float(line_width) * float(line_width))) * 2.0);
-    if(dist_from_line < ddx) {
-        if(flag) line_a = max(line_a, vec4(color, alpha));
-        else {
-            line_c = vec4(color, alpha);
+    ivec2 power_scales = ivec2(max(-1, s - 2), s + 1);
+
+    for(int i = power_scales.x; i <= power_scales.y; ++i) {
+        float grid_width = pow(16.0, float(i));
+
+        float dist_from_line = abs(fract(float(coords.x / grid_width) + 0.5f) - 0.5f) * grid_width;
+        float dist_from_center = abs(coords.x);
+
+        float alpha = clamp(1.0 - (ddx / (grid_width * 0.125f)), 0.0f, 1.0f);
+        if(dist_from_line < ddx) {
+            if(dist_from_center < ddx) {
+                if(coords.y > 0.0f) line_a = max(line_a, vec4(y_color, 1.0f));
+                else line_a = max(line_a, vec4(ny_color, 1.0f));
+            }
+            line_c = max(line_c, vec4(base_color * 2.0f, alpha));
         }
-    }
 
-    // x direction pixel
-    color = base_color * 2.0;
-    line_width = 1;
-    dist_from_line = abs(fract(coords.x * 16.0 + 0.5) - 0.5) / 16.0 / float(line_width) * 2.0;
-    alpha = max(0.0, 1.0 - (ddx * 16.0 / float(line_width)) * 2.0);
-    if(dist_from_line < ddx) {
-        line_c = max(line_c, vec4(color, alpha * 0.5));
-    }
+        dist_from_line = abs(fract(float(coords.y / grid_width) + 0.5f) - 0.5f) * grid_width;
+        dist_from_center = abs(coords.y);
 
-    // y direction
-    flag = false;
-    line_width = 1;
-    color = base_color * 2.0;
-    if(int(round(coords.y)) % 256 == 0) {
-        color = sector_color;
-        line_width = 2;
-        flag = true;
-    }
-    if(int(round(coords.y)) == 0) {
-        color = hex_color(uint(0x59FF59));
-        line_width = 2;
-        flag = true;
-    }
-
-    dist_from_line = abs(fract(coords.y + 0.5) - 0.5) / float(line_width) * 2.0;
-    alpha = max(0.0, 1.0 - (ddy / float(line_width)) * 2.0);
-    if(dist_from_line < ddy) {
-        if(flag) line_a = max(line_a, vec4(color, alpha));
-        else line_c = vec4(color, alpha);
-    }
-
-    // y direction pixel
-    color = base_color * 2.0;
-    line_width = 1;
-    dist_from_line = abs(fract(coords.y * 16.0 + 0.5) - 0.5) / 16.0 / float(line_width) * 2.0;
-    alpha = max(0.0, 1.0 - (ddy * 16.0 / float(line_width)) * 2.0);
-    if(dist_from_line < ddy) {
-        line_c = max(line_c, vec4(color, alpha * 0.5));
+        alpha = clamp(1.0 - (ddy / (grid_width * 0.125f)), 0.0f, 1.0f);
+        if(dist_from_line < ddy) {
+            if(dist_from_center < ddy) {
+                if(coords.x > 0.0f) line_a = max(line_a, vec4(x_color, 1.0f));
+                else line_a = max(line_a, vec4(nx_color, 1.0f));
+            }
+            line_c = max(line_c, vec4(base_color * 2.0f, alpha));
+        }
     }
 
     c.rgb = line_c.rgb * line_c.w + c.rgb * (1.0 - line_c.w);
     c.rgb = line_a.rgb * line_a.w + c.rgb * (1.0 - line_a.w);
 
     frag_color = c;
-    */
-
-    frag_color = vec4(fract(coords), 0.0, 1.0);
 }

@@ -7,6 +7,7 @@
 #include "camera.h"
 #include "ecs.h"
 #include "input.h"
+#include "gui.h"
 
 #include <game-activity/GameActivity.cpp>
 #include <game-text-input/gametextinput.cpp>
@@ -14,16 +15,18 @@
 extern "C" {
 #include <game-activity/native_app_glue/android_native_app_glue.c>
 void handle_cmd(android_app *app, int32_t cmd) {
-    switch (cmd) {
+    switch(cmd) {
         case APP_CMD_INIT_WINDOW: {
             // create window
-            LOGD("init game");
 
-            Renderer &renderer = ecs.get_system<Renderer>();
+            Renderer& renderer = ecs.get_system<Renderer>();
             renderer.app = app;
             renderer.init();
 
             app->userData = &renderer;
+
+            GUI_system& gui_system = ecs.get_system<GUI_system>();
+            gui_system.init();
 
             core.shaders.clear();
             core.textures.clear();
@@ -31,7 +34,12 @@ void handle_cmd(android_app *app, int32_t cmd) {
             core.shaders.emplace("color", std::shared_ptr<Shader>(new Shader("shaders/color.vert", "shaders/color.frag")));
             core.shaders.emplace("grid", std::shared_ptr<Shader>(new Shader("shaders/grid.vert", "shaders/grid.frag")));
             core.shaders.emplace("background", std::shared_ptr<Shader>(new Shader("shaders/background.vert", "shaders/background.frag")));
+            core.shaders.emplace("gui", std::shared_ptr<Shader>(new Shader("shaders/gui.vert", "shaders/gui.frag")));
+
             core.textures.emplace("grid", std::shared_ptr<Texture>(new Texture("textures/grid.png", {GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE}, 4)));
+            core.textures.emplace("text", std::shared_ptr<Texture>(new Texture("textures/text_mono.png", {GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE}, 4)));
+            core.textures.emplace("gui", std::shared_ptr<Texture>(new Texture("textures/icons.png", {GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE}, 4)));
+
             break;
         }
         case APP_CMD_TERM_WINDOW: {
@@ -56,13 +64,14 @@ bool motion_event_filter_func(const GameActivityMotionEvent *motionEvent) {
 void android_main(android_app* app) {
     ecs.entity_manager.init();
 
-    ecs.register_system<Renderer>();
-    ecs.register_system<Input_system>();
-
     ecs.register_component<Transform>();
     ecs.register_component<Camera>();
     ecs.register_component<Transform2D>();
     ecs.register_component<Camera2D>();
+
+    ecs.register_system<Renderer>();
+    ecs.register_system<GUI_system>();
+    ecs.register_system<Input_system>();
 
     app->onAppCmd = handle_cmd;
 
@@ -86,6 +95,9 @@ void android_main(android_app* app) {
 
     int events;
     do {
+        int width, height;
+        eglQuerySurface(renderer.display, renderer.surface, EGL_WIDTH, &width);
+        eglQuerySurface(renderer.display, renderer.surface, EGL_HEIGHT, &height);
 
         Input_system& input_system = ecs.get_system<Input_system>();
 
@@ -126,10 +138,9 @@ void android_main(android_app* app) {
                         float y = GameActivityPointerAxes_getY(&event.pointers[pointer_index]);
 
                         uint32_t id = event.pointers[pointer_index].id;
-                        LOGD("%i DOWN", id);
 
                         Pointer p;
-                        p.pos = {x, y};
+                        p.pos = {x, height - y - 1};
                         p.prev_pos = p.pos;
 
                         input_system.pointers.emplace(id, p);
@@ -154,7 +165,7 @@ void android_main(android_app* app) {
                             float x = GameActivityPointerAxes_getX(&event.pointers[j]);
                             float y = GameActivityPointerAxes_getY(&event.pointers[j]);
 
-                            vec2 new_pos = vec2(x, y);
+                            vec2 new_pos = vec2(x, height - y - 1);
 
                             uint32_t id = event.pointers[j].id;
 
@@ -182,7 +193,6 @@ void android_main(android_app* app) {
                         */
                     } else if(masked_action == AMOTION_EVENT_ACTION_POINTER_UP || masked_action == AMOTION_EVENT_ACTION_UP) {
                         uint32_t id = event.pointers[pointer_index].id;
-                        LOGD("%i UP", id);
 
                         input_system.pointers.erase(id);
                     }

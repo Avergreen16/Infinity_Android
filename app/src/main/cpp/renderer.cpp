@@ -7,6 +7,9 @@
 #include "wrapper.h"
 #include "core.h"
 #include "camera.h"
+#include "input.h"
+#include "gui.h"
+
 #include <GLES/egl.h>
 
 using namespace glm;
@@ -22,6 +25,7 @@ void Renderer::init() {
                 EGL_RED_SIZE, 8,
                 EGL_GREEN_SIZE, 8,
                 EGL_BLUE_SIZE, 8,
+                EGL_ALPHA_SIZE, 8,
                 EGL_NONE
         };
         EGLint num_configs;
@@ -40,8 +44,6 @@ void Renderer::init() {
     }
 
     eglMakeCurrent(display, surface, surface, context);
-
-    LOGD("renderer initialized");
 
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 }
@@ -92,47 +94,19 @@ void Renderer::call() {
         vertices->init();
     }
 
+    glDisable(GL_DEPTH_TEST);
+
     render_background();
 
-    /*
-    std::vector<vec3> v = {
-            vec3(-0.5f, 0.0f, -0.5f),
-            vec3(0.5f, 0.0f, -0.5f),
-            vec3(0.0f, 0.0f, 0.5f)
-    };
+    //render_text();
 
-    vertices->vertex_buffer_data(v.data(), v.size(), sizeof(vec3), GL_STREAM_DRAW);
-    vertices->add_vertex_attribute(0, 3, GL_FLOAT, false, sizeof(vec3), 0);
-
-    mat4 id = identity<mat4>();
-    vec4 color = vec4(1.0f, 0.0f, 0.0f, 1.0f);
-
-    core.shaders["color"]->use();
-    vertices->bind();
-    core.textures["grid"]->bind(0);
-
-    glUniformMatrix4fv(0, 1, false, &c.proj[0][0]);
-    glUniformMatrix4fv(1, 1, false, &view[0][0]);
-    glUniformMatrix4fv(2, 1, false, &model_2[0][0]);
-    glUniform4fv(3, 1, &color[0]);
-
-    vertices->draw_vertices(GL_TRIANGLES);
-
-    color = vec4(0.0f, 1.0f, 1.0f, 1.0f);
-
-    glUniformMatrix4fv(0, 1, false, &c.proj[0][0]);
-    glUniformMatrix4fv(1, 1, false, &view[0][0]);
-    glUniformMatrix4fv(2, 1, false, &model_3[0][0]);
-    glUniform4fv(3, 1, &color[0]);
-
-    vertices->draw_vertices(GL_TRIANGLES);
-    */
-
+    render_gui();
 
     eglSwapBuffers(display, surface);
 }
 
 void Renderer::render_background() {
+    Input_system& input_system = ecs.get_system<Input_system>();
     std::vector<vec2> square = {
             vec2(-1.0f, -1.0f),
             vec2(1.0f, -1.0f),
@@ -166,6 +140,44 @@ void Renderer::render_background() {
     glUniformMatrix4fv(0, 1, false, &view[0][0]);
     glUniformMatrix4fv(1, 1, false, &proj[0][0]);
     glUniform2f(2, float(width), float(height));
+
+    vertices->draw_vertices(GL_TRIANGLES);
+}
+
+void Renderer::render_gui() {
+    GUI_system& gui = ecs.get_system<GUI_system>();
+    Transform2D& ct = ecs.get_component<Transform2D>(camera);
+    Camera2D& cc = ecs.get_component<Camera2D>(camera);
+
+    int width, height;
+    eglQuerySurface(display, surface, EGL_WIDTH, &width);
+    eglQuerySurface(display, surface, EGL_HEIGHT, &height);
+
+    float text_scale = 3.0f;
+
+    mat4 proj = translate(vec3(-1.0f, -1.0f, 0.0f)) * scale(vec3(2.0f / float(width), 2.0f / float(height), 1.0f));
+    mat4 view = identity<mat4>();
+    mat4 model = identity<mat4>();
+
+    std::vector<UI_vertex>& vs = gui.vertices;
+
+    vertices->vertex_buffer_data(vs.data(), vs.size(), sizeof(UI_vertex), GL_STREAM_DRAW);
+    vertices->add_vertex_attribute(0, 2, GL_FLOAT, false, sizeof(UI_vertex), 0);
+    vertices->add_vertex_attribute(1, 2, GL_FLOAT, false, sizeof(UI_vertex), sizeof(float) * 2);
+    vertices->add_vertex_attribute(2, 4, GL_FLOAT, false, sizeof(UI_vertex), sizeof(float) * 4);
+    vertices->add_vertex_attribute(3, 4, GL_FLOAT, false, sizeof(UI_vertex), sizeof(float) * 8);
+    vertices->add_vertex_attribute(4, 1, GL_UNSIGNED_INT, false, sizeof(UI_vertex), sizeof(float) * 12);
+
+    core.shaders["gui"]->use();
+
+    vertices->bind();
+
+    glUniformMatrix4fv(0, 1, false, &proj[0][0]);
+    glUniformMatrix4fv(1, 1, false, &view[0][0]);
+    glUniformMatrix4fv(2, 1, false, &model[0][0]);
+
+    core.textures["text"]->bind(0);
+    core.textures["gui"]->bind(1);
 
     vertices->draw_vertices(GL_TRIANGLES);
 }

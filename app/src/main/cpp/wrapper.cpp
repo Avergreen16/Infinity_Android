@@ -25,6 +25,27 @@ std::string get_text_from_file(std::string path) {
     return s;
 }
 
+std::vector<uint8_t> get_bytes_from_file(std::string path) {
+    Renderer& renderer = ecs.get_system<Renderer>();
+    AAsset* asset = AAssetManager_open(renderer.app->activity->assetManager, path.c_str(), 0);
+
+    if(!asset) {
+        LOGD("failed to open file: %s", path.c_str());
+        return {};
+    }
+
+    const void* a = AAsset_getBuffer(asset);
+    uint32_t length = AAsset_getLength(asset);
+
+    std::vector<uint8_t> bytes;
+    bytes.resize(length);
+    memcpy(bytes.data(), a, length);
+
+    AAsset_close(asset);
+
+    return bytes;
+}
+
 std::vector<uint8_t> get_texture(std::string path, ivec2& size) {
     Renderer& renderer = ecs.get_system<Renderer>();
     const char* file = path.c_str();
