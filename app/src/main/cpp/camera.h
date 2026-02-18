@@ -19,4 +19,5 @@ struct Transform2D {
 
 struct Camera2D {
     float scale;
+    mat4 proj;
 };

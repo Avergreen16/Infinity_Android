@@ -39,6 +39,28 @@ void handle_cmd(android_app *app, int32_t cmd) {
             core.textures.emplace("text", std::shared_ptr<Texture>(new Texture("textures/text_mono.png", {GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE}, 4)));
             core.textures.emplace("gui", std::shared_ptr<Texture>(new Texture("textures/icons.png", {GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE}, 4)));
 
+            /*
+             * when the context got reset, all of the vertex buffers got turned off...
+             * but when i delete them after creating new buffers,
+             * some of the old buffers have the same id as the new buffers,
+             * and then deleting them deletes the new buffer
+             */
+            Physics_system& physics_system = ecs.get_system<Physics_system>();
+            renderer.vertices.reset();
+
+            for(uint32_t entity : physics_system.collectors[0].entities) {
+                Mesh& mesh = ecs.get_component<Mesh>(entity);
+                mesh.v_lines.reset();
+                mesh.v_tris.reset();
+            }
+
+            for(uint32_t entity : physics_system.collectors[0].entities) {
+                Collider& collider = ecs.get_component<Collider>(entity);
+                Mesh& mesh = ecs.get_component<Mesh>(entity);
+
+                create_mesh(mesh, collider.vertices, collider.radius, true);
+            }
+
             break;
         }
         case APP_CMD_GAINED_FOCUS: {
@@ -56,6 +78,7 @@ void handle_cmd(android_app *app, int32_t cmd) {
             renderer.render = false;
             core.shaders.clear();
             core.textures.clear();
+            renderer.terminate();
             break;
         }
         case APP_CMD_DESTROY: {
@@ -63,6 +86,7 @@ void handle_cmd(android_app *app, int32_t cmd) {
 
             core.shaders.clear();
             core.textures.clear();
+            renderer.terminate();
             break;
         }
         default: {
@@ -78,40 +102,47 @@ bool motion_event_filter_func(const GameActivityMotionEvent *motionEvent) {
             sourceClass == AINPUT_SOURCE_CLASS_JOYSTICK);
 }
 
+bool init = false;
+
 void android_main(android_app* app) {
-    ecs.entity_manager.init();
+    if(!init) {
+        ecs.entity_manager.init();
 
-    ecs.register_component<Transform>();
-    ecs.register_component<Camera>();
-    ecs.register_component<Transform2D>();
-    ecs.register_component<Camera2D>();
-    ecs.register_component<Mesh>();
-    ecs.register_component<Collider>();
+        ecs.register_component<Transform>();
+        ecs.register_component<Camera>();
+        ecs.register_component<Transform2D>();
+        ecs.register_component<Camera2D>();
+        ecs.register_component<Mesh>();
+        ecs.register_component<Collider>();
 
-    ecs.register_system<Renderer>();
-    ecs.register_system<GUI_system>();
-    ecs.register_system<Input_system>();
-    ecs.register_system<Physics_system>();
+        ecs.register_system<Renderer>();
+        ecs.register_system<GUI_system>();
+        ecs.register_system<Input_system>();
+        ecs.register_system<Physics_system>();
 
-    app->onAppCmd = handle_cmd;
+        Camera2D camera;
+        Transform2D transform;
+        camera.scale = 1.0f;
+        transform.position = vec2(0.0f);
+        transform.orientation = identity<mat2>();
 
-    Camera2D camera;
-    Transform2D transform;
-    camera.scale = 1.0f;
-    transform.position = vec2(0.0f);
-    transform.orientation = identity<mat2>();
+        uint32_t entity = ecs.insert_entity();
+        ecs.insert_component(entity, transform);
+        ecs.insert_component(entity, camera);
 
-    uint32_t entity = ecs.insert_entity();
-    ecs.insert_component(entity, transform);
-    ecs.insert_component(entity, camera);
-
-    Renderer& renderer = ecs.get_system<Renderer>();
-    renderer.camera = entity;
-
-    android_poll_source* poll_source;
+        Renderer &renderer = ecs.get_system<Renderer>();
+        renderer.camera = entity;
+    }
 
     double time = get_time();
     core.start_time = time;
+
+
+    Renderer &renderer = ecs.get_system<Renderer>();
+    app->onAppCmd = handle_cmd;
+    android_poll_source *poll_source;
+
+    LOGD("MAIN CALLED");
 
     int events;
     do {
@@ -223,6 +254,215 @@ void android_main(android_app* app) {
 
 
         if(!app->userData || !renderer.render) continue;
+
+        if(!init) {
+            init = true;
+
+            // platform
+
+            Transform2D t;
+            t.position = vec2(0.0f);
+            t.orientation = identity<mat2>();
+            std::vector<vec2> square = {
+                    vec2(-1, -1),
+                    vec2(1, -1),
+                    vec2(1, 1),
+                    vec2(-1, 1)
+            };
+
+            Collider c;
+            c.radius = vec2(0.0f);
+            c.vertices = square;
+            for(vec2& v : c.vertices) v *= vec2(256, 16);
+
+            c.is_static = true;
+
+            Mesh m;
+            create_mesh(m, {c.vertices}, c.radius);
+
+            uint32_t entity = ecs.insert_entity();
+
+            ecs.insert_component(entity, m);
+            ecs.insert_component(entity, t);
+            ecs.insert_component(entity, c);
+
+            auto insert_square = [&](vec2 pos, vec2 size, mat2 ori) {
+                uint32_t entity = ecs.insert_entity();
+
+                Transform2D t;
+                t.position = pos;
+                t.orientation = ori;
+
+
+                Collider c;
+                c.vertices = {
+                        vec2(-1, -1),
+                        vec2(1, -1),
+                        vec2(1, 1),
+                        vec2(-1, 1)
+                };
+                for(vec2& v : c.vertices) v *= size * 0.5f;
+                c.radius = vec2(0.0f);
+                c.mass = size.x * size.y * 25.0f;
+                //c.allow_rotation = false;
+
+                vec2 shift = Physics_system::calculate_inertia(c);
+                t.position += shift;
+
+                Mesh m;
+                m.color = vec3(0.35f);//get_color(abs(core.random())) * 0.7f + 0.3f;
+                create_mesh(m, c.vertices, c.radius);
+
+                ecs.insert_component(entity, m);
+                ecs.insert_component(entity, t);
+                ecs.insert_component(entity, c);
+            };
+
+            vec2 origin = vec2(0.0f, 32.0f);
+            float sep = 0.25f;
+            uint32_t square_size = 5;
+            mat2 ori = glm::rotate(float(M_PI * 0.33333f), vec3(0.0f, 0.0f, 1.0f));
+
+            for(int y = 0; y < square_size; ++y) {
+                for (int x = 0; x < square_size; ++x) {
+                    vec2 s = vec2(float(x) - square_size * 0.5f, float(y) - square_size * 0.5f) * (1.0f + sep);
+
+                    s = ori * s;
+
+                    insert_square(origin + s, vec2(1.0f), ori);
+                }
+            }
+
+            //chain
+            {
+                vec2 center = vec2(0.0f, 48.0f);
+
+                std::set<uint32_t> non_colliding;
+                Physics_system& ps = ecs.get_system<Physics_system>();
+
+                uint32_t num_links = 16;
+
+                float scale = 1.5f;
+
+                float sep = 0.025f * scale;
+                vec2 size = vec2(0.33f, 1.0f) * scale;
+
+                Transform2D t;
+                t.position = center;
+                vec2 up = normalize(vec2(1.0f, 1.0f));
+                t.orientation = {up, vec2(-up.y, up.x)};
+
+                Collider c;
+                c.vertices = {vec2(0, -(size.y - size.x) * 0.5f), vec2(0.0f, (size.y - size.x) * 0.5f)};
+                c.radius = vec2(size.x * 0.5f);
+                c.mass = 0x6 * scale * scale;
+                vec2 shift = Physics_system::calculate_inertia(c);
+                t.position += t.orientation * shift;
+                t.position += t.orientation * vec2(0, size.y * 0.5f);
+                //c.allow_rotation = false;
+
+                Mesh m;
+                m.color = vec3(0.9f, 0.9f, 0.9f);
+                create_mesh(m, c.vertices, c.radius);
+
+                uint32_t prev_entity = NULL_ENTITY;
+                uint32_t first_entity;
+
+                for(int i = 0; i < num_links; ++i) {
+                    uint32_t capsule = ecs.insert_entity();
+                    non_colliding.emplace(capsule);
+
+                    ecs.insert_component(capsule, m);
+                    ecs.insert_component(capsule, t);
+                    ecs.insert_component(capsule, c);
+
+
+                    if(prev_entity != NULL_ENTITY) {
+                        Constraint constraint;
+                        constraint.a = prev_entity;
+                        constraint.b = capsule;
+
+                        pos_constraint pc;
+                        pc.a = vec2(0, (size.y + sep) * 0.5f);
+                        pc.b = vec2(0, -(size.y + sep) * 0.5f);
+                        pc.vs = {vec2(1, 0), vec2(0, 1)};
+
+                        constraint.pos.push_back(pc);
+
+                        ps.constraints.push_back(constraint);
+                    } else first_entity = capsule;
+
+                    t.position += t.orientation * vec2(0, (size.y + sep));
+
+                    prev_entity = capsule;
+                }
+
+                for(uint32_t link : non_colliding) {
+                    Collider& c = ecs.get_component<Collider>(link);
+                    c.non_colliding = non_colliding;
+                }
+
+                float asteroid_radius = 0.5f * scale;
+
+                Collider c2;
+                c2.vertices = {vec2(0, 0)};
+                c2.radius = vec2(asteroid_radius);
+                c2.mass = 0x30 * scale * scale;
+                shift = Physics_system::calculate_inertia(c2);
+                t.position += t.orientation * shift;
+                t.position += t.orientation * vec2(0, 1.0f);
+
+                Mesh m2;
+                m2.color = vec3(0.9f, 0.9f, 0.9f);
+                create_mesh(m2, c2.vertices, c2.radius);
+
+                t.position = center + t.orientation * vec2(0, (size.y + sep) * num_links + asteroid_radius);
+
+                uint32_t asteroid = ecs.insert_entity();
+                ecs.insert_component(asteroid, m2);
+                ecs.insert_component(asteroid, t);
+                ecs.insert_component(asteroid, c2);
+
+                {
+                    Constraint constraint;
+                    constraint.a = prev_entity;
+                    constraint.b = asteroid;
+
+                    pos_constraint pc;
+                    pc.a = vec2(0, (size.y + sep) * 0.5f);
+                    pc.b = vec2(0, -(asteroid_radius + sep * 0.5f));
+                    pc.vs = {vec2(1, 0), vec2(0, 1)};
+
+                    constraint.pos.push_back(pc);
+
+                    ps.constraints.push_back(constraint);
+                }
+
+                //
+
+                t.position = center + t.orientation * -vec2(0, asteroid_radius);
+
+                asteroid = ecs.insert_entity();
+                ecs.insert_component(asteroid, m2);
+                ecs.insert_component(asteroid, t);
+                ecs.insert_component(asteroid, c2);
+
+                {
+                    Constraint constraint;
+                    constraint.a = asteroid;
+                    constraint.b = first_entity;
+
+                    pos_constraint pc;
+                    pc.a = vec2(0, asteroid_radius + sep * 0.5f);
+                    pc.b = vec2(0, -(size.y + sep) * 0.5f);
+                    pc.vs = {vec2(1, 0), vec2(0, 1)};
+
+                    constraint.pos.push_back(pc);
+
+                    ps.constraints.push_back(constraint);
+                }
+            }
+        }
 
         /*
         if(ALooper_pollOnce(0, nullptr, &events, (void**)&poll_source) >= 0) {
