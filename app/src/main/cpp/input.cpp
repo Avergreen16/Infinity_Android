@@ -29,6 +29,10 @@ void Input_system::call() {
     eglQuerySurface(renderer.display, renderer.surface, EGL_WIDTH, &width);
     eglQuerySurface(renderer.display, renderer.surface, EGL_HEIGHT, &height);
 
+    vec2 ratio;
+    if(width < height) ratio = vec2(1.0f, float(height) / width);
+    else ratio = vec2(float(width) / height, 1.0f);
+
     Transform2D& camera_transform = ecs.get_component<Transform2D>(renderer.camera);
     Camera2D& camera_camera = ecs.get_component<Camera2D>(renderer.camera);
 
@@ -83,7 +87,7 @@ void Input_system::call() {
             mat2 rot = glm::rotate(delta_rotate, vec3(0.0f, 0.0f, 1.0f));
 
             pivot = camera_transform.orientation *
-                    (((prev_avg / vec2(width, height) * 2.0f - 1.0f)) * vec2(1.0f, height / width) /
+                    (((prev_avg / vec2(width, height) * 2.0f - 1.0f)) * ratio /
                      camera_camera.scale) + camera_transform.position;
 
             camera_transform.position =
@@ -101,7 +105,7 @@ void Input_system::call() {
         // change position
 
         vec2 pos = camera_transform.orientation * vec2(-delta_motion.x, -delta_motion.y);
-        float ratio = width * camera_camera.scale * 0.5f;
+        float ratio = min(width, height) * camera_camera.scale * 0.5f;
         pos /= ratio;
 
         camera_transform.position += pos;
@@ -112,7 +116,7 @@ void Input_system::call() {
 
         if(pointer.down == 0) {
             if(pointers.size() == 1 && held_pointer == 0xFFFFFFFF) {
-                vec2 world_pos = camera_transform.orientation * (((pointer.pos / vec2(width, height) * 2.0f - 1.0f)) * vec2(1.0f, height / width) / camera_camera.scale) + camera_transform.position;
+                vec2 world_pos = camera_transform.orientation * (((pointer.pos / vec2(width, height) * 2.0f - 1.0f)) * ratio / camera_camera.scale) + camera_transform.position;
 
                 for(uint32_t entity : physics_system.collectors[0].entities) {
                     Transform2D& tf = ecs.get_component<Transform2D>(entity);
@@ -151,7 +155,7 @@ void Input_system::call() {
     if(pointers.find(held_pointer) != pointers.end()) {
         Pointer& pointer = pointers[held_pointer];
 
-        vec2 world_pos = camera_transform.orientation * (((pointer.pos / vec2(width, height) * 2.0f - 1.0f)) * vec2(1.0f, height / width) / camera_camera.scale) + camera_transform.position;
+        vec2 world_pos = camera_transform.orientation * (((pointer.pos / vec2(width, height) * 2.0f - 1.0f)) * ratio / camera_camera.scale) + camera_transform.position;
 
         Constraint& constraint = physics_system.constraints[held_constraint];
 
