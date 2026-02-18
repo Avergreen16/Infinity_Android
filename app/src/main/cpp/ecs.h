@@ -15,6 +15,7 @@ using namespace glm;
 
 const uint32_t MAX_COMPONENTS = 256;
 const uint32_t MAX_ENTITIES = 65536;
+const uint32_t NULL_ENTITY = 0xFFFFFFFF;
 using Signature = std::bitset<MAX_COMPONENTS>;
 
 struct Entity {

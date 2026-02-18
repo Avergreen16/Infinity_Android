@@ -119,7 +119,6 @@ struct GUI_system : System {
 
     std::unordered_map<std::string, Window_state> window_state;
 
-    bool init_gui = false;
     uint32_t capture_id = 0xFFFFFFFF;
     std::string capture_widget;
     uint32_t capture_operation;
@@ -133,7 +132,7 @@ struct GUI_system : System {
     void init();
     void call();
 
-    void tab(vec2 position, vec2 size, ivec4 icon, bool& active);
+    void button(vec2 position, vec2 size, ivec4 icon, bool& active);
     void window(std::string name, bool& close_window);
     void end_window();
     void text(std::string text);

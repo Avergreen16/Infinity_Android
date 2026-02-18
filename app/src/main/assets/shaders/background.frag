@@ -49,8 +49,9 @@ void main() {
         float dist_from_center = abs(coords.x);
 
         float alpha = clamp(1.0 - (ddx / (grid_width * 0.125f)), 0.0f, 1.0f);
-        if(dist_from_line < ddx) {
-            if(dist_from_center < ddx) {
+        float w = clamp(1.0f + alpha, 1.0f, 2.0f);
+        if(dist_from_line < ddx * w) {
+            if(dist_from_center < ddx * w) {
                 if(coords.y > 0.0f) line_a = max(line_a, vec4(y_color, 1.0f));
                 else line_a = max(line_a, vec4(ny_color, 1.0f));
             }
@@ -61,8 +62,9 @@ void main() {
         dist_from_center = abs(coords.y);
 
         alpha = clamp(1.0 - (ddy / (grid_width * 0.125f)), 0.0f, 1.0f);
-        if(dist_from_line < ddy) {
-            if(dist_from_center < ddy) {
+        w = clamp(1.0f + alpha, 1.0f, 2.0f);
+        if(dist_from_line < ddy * w) {
+            if(dist_from_center < ddy * w) {
                 if(coords.x > 0.0f) line_a = max(line_a, vec4(x_color, 1.0f));
                 else line_a = max(line_a, vec4(nx_color, 1.0f));
             }

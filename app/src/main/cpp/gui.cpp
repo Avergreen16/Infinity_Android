@@ -6,6 +6,7 @@
 #include "renderer.h"
 #include "input.h"
 #include "camera.h"
+#include "physics.h"
 
 std::string numbers = "0123456789\x80\x81\x82\x83\x84\x85";
 
@@ -56,7 +57,9 @@ GUI_system::~GUI_system() {
 }
 
 void GUI_system::init() {
-    fonts.emplace("default_mono", Font("fonts/alter_mono.afont"));
+    if(fonts.size() == 0) {
+        fonts.emplace("default_mono", Font("fonts/alter_mono.afont"));
+    }
 }
 
 void GUI_system::call() {
@@ -75,22 +78,16 @@ void GUI_system::call() {
     eglQuerySurface(renderer.display, renderer.surface, EGL_WIDTH, &width);
     eglQuerySurface(renderer.display, renderer.surface, EGL_HEIGHT, &height);
 
-    static bool open_settings;
-    static bool open_chat;
-    static bool open_stats;
+    static bool open_settings = false;
+    static bool open_chat = false;
+    static bool open_stats = false;
 
-    if(!init_gui) {
-        init_gui = true;
-
-        open_settings = false;
-        open_chat = false;
-        open_stats = false;
-    }
+    Physics_system& ps = ecs.get_system<Physics_system>();
 
     if(open_settings) {
-        tab({0.0f, height - 64.0f - 96.0f}, {160.0f, 96.0f}, {54, 54, 64, 64}, open_settings);
+        button({0.0f, height - 96.0f - 96.0f}, {160.0f, 96.0f}, {54, 54, 64, 64}, open_settings);
     } else {
-        tab({0.0f, height - 64.0f - 96.0f}, {96.0f, 96.0f}, {54, 54, 64, 64}, open_settings);
+        button({0.0f, height - 96.0f - 96.0f}, {96.0f, 96.0f}, {54, 54, 64, 64}, open_settings);
         if(open_settings) {
             //open_chat = false;
             //window_state.clear();
@@ -105,9 +102,9 @@ void GUI_system::call() {
     }
 
     if(open_stats) {
-        tab({0.0f, height - 64.0f - 96.0f * 2.0f - 32.0f}, {160.0f, 96.0f}, {54, 34, 64, 44},open_stats);
+        button({0.0f, height - 96.0f - 96.0f * 2.0f - 32.0f}, {160.0f, 96.0f}, {54, 34, 64, 44},open_stats);
     } else {
-        tab({0.0f, height - 64.0f - 96.0f * 2.0f - 32.0f}, {96.0f, 96.0f}, {54, 34, 64, 44},open_stats);
+        button({0.0f, height - 96.0f - 96.0f * 2.0f - 32.0f}, {96.0f, 96.0f}, {54, 34, 64, 44},open_stats);
         if(open_stats) {
             //open_settings = false;
             //window_state.clear();
@@ -122,9 +119,9 @@ void GUI_system::call() {
     }
 
     if(open_chat) {
-        tab({0.0f, height - 64.0f - 96.0f * 3.0f - 32.0f * 2.0f}, {160.0f, 96.0f}, {54, 44, 64, 54},open_chat);
+        button({0.0f, height - 96.0f - 96.0f * 3.0f - 32.0f * 2.0f}, {160.0f, 96.0f}, {54, 44, 64, 54},open_chat);
     } else {
-        tab({0.0f, height - 64.0f - 96.0f * 3.0f - 32.0f * 2.0f}, {96.0f, 96.0f}, {54, 44, 64, 54},open_chat);
+        button({0.0f, height - 96.0f - 96.0f * 3.0f - 32.0f * 2.0f}, {96.0f, 96.0f}, {54, 44, 64, 54},open_chat);
         if(open_chat) {
             //open_settings = false;
             //window_state.clear();
@@ -136,6 +133,12 @@ void GUI_system::call() {
 
             window_state["chat_window"] = ws;
         }
+    }
+
+    if(ps.sim_active) {
+        button({width - 96.0f - 16.0f, height - 96.0f - 96.0f}, {96.0f, 96.0f}, {54, 24, 64, 34}, ps.sim_active);
+    } else {
+        button({width - 96.0f - 16.0f, height - 96.0f - 96.0f}, {96.0f, 96.0f}, {54, 14, 64, 24}, ps.sim_active);
     }
 
 
@@ -452,7 +455,7 @@ void GUI_system::end_window() {
 
 }
 
-void GUI_system::tab(vec2 position, vec2 size, ivec4 icon, bool& active) {
+void GUI_system::button(vec2 position, vec2 size, ivec4 icon, bool& active) {
     Input_system& input_system = ecs.get_system<Input_system>();
 
     std::vector<UI_vertex> total_ret;

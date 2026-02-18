@@ -20,6 +20,9 @@ struct Input_system : System {
     vec2 prev_center;
     vec2 pivot;
 
+    uint32_t held_pointer = 0xFFFFFFFF;
+    uint32_t held_constraint;
+
     Input_system();
     ~Input_system();
 

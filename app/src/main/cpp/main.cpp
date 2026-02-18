@@ -8,6 +8,7 @@
 #include "ecs.h"
 #include "input.h"
 #include "gui.h"
+#include "physics.h"
 
 #include <game-activity/GameActivity.cpp>
 #include <game-text-input/gametextinput.cpp>
@@ -23,13 +24,11 @@ void handle_cmd(android_app *app, int32_t cmd) {
             renderer.app = app;
             renderer.init();
 
+            renderer.render = true;
             app->userData = &renderer;
 
             GUI_system& gui_system = ecs.get_system<GUI_system>();
             gui_system.init();
-
-            core.shaders.clear();
-            core.textures.clear();
 
             core.shaders.emplace("color", std::shared_ptr<Shader>(new Shader("shaders/color.vert", "shaders/color.frag")));
             core.shaders.emplace("grid", std::shared_ptr<Shader>(new Shader("shaders/grid.vert", "shaders/grid.frag")));
@@ -42,10 +41,28 @@ void handle_cmd(android_app *app, int32_t cmd) {
 
             break;
         }
+        case APP_CMD_GAINED_FOCUS: {
+
+            break;
+        }
+        case APP_CMD_LOST_FOCUS: {
+
+            break;
+        }
         case APP_CMD_TERM_WINDOW: {
+            GUI_system& gui_system = ecs.get_system<GUI_system>();
+            Renderer& renderer = ecs.get_system<Renderer>();
             // destroy window
+            renderer.render = false;
+            core.shaders.clear();
+            core.textures.clear();
+            break;
+        }
+        case APP_CMD_DESTROY: {
             Renderer &renderer = ecs.get_system<Renderer>();
-            //renderer.~Renderer();
+
+            core.shaders.clear();
+            core.textures.clear();
             break;
         }
         default: {
@@ -68,10 +85,13 @@ void android_main(android_app* app) {
     ecs.register_component<Camera>();
     ecs.register_component<Transform2D>();
     ecs.register_component<Camera2D>();
+    ecs.register_component<Mesh>();
+    ecs.register_component<Collider>();
 
     ecs.register_system<Renderer>();
     ecs.register_system<GUI_system>();
     ecs.register_system<Input_system>();
+    ecs.register_system<Physics_system>();
 
     app->onAppCmd = handle_cmd;
 
@@ -202,7 +222,7 @@ void android_main(android_app* app) {
         }
 
 
-        if(!app->userData) continue;
+        if(!app->userData || !renderer.render) continue;
 
         /*
         if(ALooper_pollOnce(0, nullptr, &events, (void**)&poll_source) >= 0) {

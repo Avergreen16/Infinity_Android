@@ -6,6 +6,7 @@
 #include "renderer.h"
 #include "camera.h"
 #include "gui.h"
+#include "physics.h"
 
 Input_system::Input_system() {
 
@@ -21,8 +22,9 @@ void Input_system::init() {
 
 void Input_system::call() {
     GUI_system& gui_system = ecs.get_system<GUI_system>();
-
+    Physics_system& physics_system = ecs.get_system<Physics_system>();
     Renderer& renderer = ecs.get_system<Renderer>();
+
     int width, height;
     eglQuerySurface(renderer.display, renderer.surface, EGL_WIDTH, &width);
     eglQuerySurface(renderer.display, renderer.surface, EGL_HEIGHT, &height);
@@ -30,7 +32,7 @@ void Input_system::call() {
     Transform2D& camera_transform = ecs.get_component<Transform2D>(renderer.camera);
     Camera2D& camera_camera = ecs.get_component<Camera2D>(renderer.camera);
 
-    if(gui_system.capture_id == 0xFFFFFFFF) {
+    if(gui_system.capture_id == 0xFFFFFFFF && held_pointer == 0xFFFFFFFF) {
         vec2 delta_motion = vec2(0.0f);
 
         if (pointers.size() >= 2) {
@@ -109,10 +111,54 @@ void Input_system::call() {
         pointer.prev_pos = pointer.pos;
 
         if(pointer.down == 0) {
+            if(pointers.size() == 1 && held_pointer == 0xFFFFFFFF) {
+                vec2 world_pos = camera_transform.orientation * (((pointer.pos / vec2(width, height) * 2.0f - 1.0f)) * vec2(1.0f, height / width) / camera_camera.scale) + camera_transform.position;
+
+                for(uint32_t entity : physics_system.collectors[0].entities) {
+                    Transform2D& tf = ecs.get_component<Transform2D>(entity);
+                    Collider& c = ecs.get_component<Collider>(entity);
+
+                    vec2 rel_point = transpose(tf.orientation) * (world_pos - tf.position);
+
+                    if(!c.is_static && physics_system.collision_point(c, rel_point)) {
+                        held_constraint = physics_system.constraints.size();
+                        held_pointer = id;
+
+                        Constraint constraint;
+                        constraint.a = entity;
+
+                        pos_constraint pc;
+                        pc.a = rel_point;
+                        pc.b = world_pos;
+                        pc.vs = {vec2(1, 0), vec2(0, 1)};
+                        pc.compliance = 0.00033;
+
+                        constraint.pos.push_back(pc);
+
+                        physics_system.constraints.push_back(constraint);
+
+                        break;
+                    }
+                }
+            }
+
             pointer.down = 1;
         } else if(pointer.down == 1) {
             pointer.down = 2;
         }
+    }
+
+    if(pointers.find(held_pointer) != pointers.end()) {
+        Pointer& pointer = pointers[held_pointer];
+
+        vec2 world_pos = camera_transform.orientation * (((pointer.pos / vec2(width, height) * 2.0f - 1.0f)) * vec2(1.0f, height / width) / camera_camera.scale) + camera_transform.position;
+
+        Constraint& constraint = physics_system.constraints[held_constraint];
+
+        constraint.pos[0].b = world_pos;
+    } else {
+        if(held_pointer != 0xFFFFFFFF) physics_system.constraints.erase(physics_system.constraints.begin() + held_constraint);
+        held_pointer = 0xFFFFFFFF;
     }
 }
 
