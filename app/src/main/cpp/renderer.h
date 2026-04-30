@@ -22,7 +22,12 @@ struct Mesh {
 };
 
 struct Sprite {
-    std::shared_ptr<Texture> texture;
+    vec3 color = vec3(0.35f);
+    float border = 0.0f;
+
+    std::shared_ptr<Texture> color_tex;
+    std::shared_ptr<Texture> normal_tex;
+
     vec4 range;
     vec2 size;
     vec2 offset;
@@ -34,6 +39,7 @@ struct Texture_vertex {
 };
 
 void create_mesh(Mesh& m, std::vector<vec2> v, vec2 radius, float border_width);
+void create_sprite(Sprite& sprite, std::vector<vec2> v, vec2 radius, float border_width);
 
 struct Renderer : System {
     Renderer();

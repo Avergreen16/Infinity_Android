@@ -36,6 +36,8 @@ void handle_cmd(android_app *app, int32_t cmd) {
             core.shaders.emplace("background", std::shared_ptr<Shader>(new Shader("shaders/background.vert", "shaders/background.frag")));
             core.shaders.emplace("gui", std::shared_ptr<Shader>(new Shader("shaders/gui.vert", "shaders/gui.frag")));
             core.shaders.emplace("shape", std::shared_ptr<Shader>(new Shader("shaders/shape.vert", "shaders/shape.frag")));
+            core.shaders.emplace("shape_render", std::shared_ptr<Shader>(new Shader("shaders/shape_render.vert", "shaders/shape_render.frag")));
+            core.shaders.emplace("sprite", std::shared_ptr<Shader>(new Shader("shaders/sprite.vert", "shaders/sprite.frag")));
 
             core.textures.emplace("grid", std::shared_ptr<Texture>(new Texture("textures/grid.png", {GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE}, 4)));
             core.textures.emplace("text", std::shared_ptr<Texture>(new Texture("textures/text_mono.png", {GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE}, 4)));
@@ -51,16 +53,11 @@ void handle_cmd(android_app *app, int32_t cmd) {
             renderer.vertices.reset();
 
             for(uint32_t entity : physics_system.collectors[0].entities) {
-                Mesh& mesh = ecs.get_component<Mesh>(entity);
-                mesh.v_lines.reset();
-                mesh.v_tris.reset();
-            }
-
-            for(uint32_t entity : physics_system.collectors[0].entities) {
                 Collider& collider = ecs.get_component<Collider>(entity);
-                Mesh& mesh = ecs.get_component<Mesh>(entity);
+                Sprite& sprite = ecs.get_component<Sprite>(entity);
 
-                create_mesh(mesh, collider.vertices, collider.radius, mesh.border);
+                //create_mesh(mesh, collider.vertices, collider.radius, mesh.border);
+                create_sprite(sprite, collider.vertices, collider.radius, sprite.border);
             }
 
             break;
@@ -116,12 +113,14 @@ void android_main(android_app* app) {
         ecs.register_component<Camera2D>();
         ecs.register_component<Mesh>();
         ecs.register_component<Collider>();
+        ecs.register_component<Sprite>();
 
         ecs.register_system<Renderer>();
         ecs.register_system<GUI_system>();
         ecs.register_system<Input_system>();
         ecs.register_system<Physics_system>();
         ecs.register_system<Level_system>();
+
 
         Camera2D camera;
         Transform2D transform;
@@ -138,6 +137,7 @@ void android_main(android_app* app) {
 
         ecs.get_system<Level_system>().load_level(0);
     }
+
 
     double time = get_time();
     core.start_time = time;
@@ -284,13 +284,13 @@ void android_main(android_app* app) {
 
             c.is_static = true;
 
-            Mesh m;
-            m.color = vec3(0.5f);
-            create_mesh(m, {c.vertices}, c.radius, 0.5f);
+            Sprite s;
+            s.color = hsv_color(abs(core.random()), 0.7f, 0.9f);
+            create_sprite(s, c.vertices, c.radius, 0.5f);
 
             uint32_t entity = ecs.insert_entity();
 
-            ecs.insert_component(entity, m);
+            ecs.insert_component(entity, s);
             ecs.insert_component(entity, t);
             ecs.insert_component(entity, c);
 
@@ -317,11 +317,11 @@ void android_main(android_app* app) {
                 vec2 shift = Physics_system::calculate_inertia(c);
                 t.position += shift;
 
-                Mesh m;
-                m.color = hsv_color(abs(core.random()), 0.7f, 0.9f);
-                create_mesh(m, c.vertices, c.radius, min(size.y, size.x) * 0.2f);
+                Sprite s;
+                s.color = hsv_color(abs(core.random()), 0.7f, 0.9f);
+                create_sprite(s, c.vertices, c.radius, min(size.y, size.x) * 0.2f);
 
-                ecs.insert_component(entity, m);
+                ecs.insert_component(entity, s);
                 ecs.insert_component(entity, t);
                 ecs.insert_component(entity, c);
             };
@@ -371,8 +371,9 @@ void android_main(android_app* app) {
                 t.position += t.orientation * vec2(0, size.y * 0.5f);
                 //c.allow_rotation = false;
 
-                Mesh m;
-                create_mesh(m, c.vertices, c.radius, size.x * 0.2f);
+                Sprite s;
+                s.color = color;
+                create_sprite(s, c.vertices, c.radius, size.x * 0.2f);
 
                 uint32_t prev_entity = NULL_ENTITY;
                 uint32_t first_entity;
@@ -380,9 +381,8 @@ void android_main(android_app* app) {
                 for(int i = 0; i < num_links; ++i) {
                     uint32_t capsule = ecs.insert_entity();
                     non_colliding.emplace(capsule);
-                    m.color = color;
 
-                    ecs.insert_component(capsule, m);
+                    ecs.insert_component(capsule, s);
                     ecs.insert_component(capsule, t);
                     ecs.insert_component(capsule, c);
 
@@ -422,14 +422,14 @@ void android_main(android_app* app) {
                 t.position += t.orientation * shift;
                 t.position += t.orientation * vec2(0, 1.0f);
 
-                Mesh m2;
-                create_mesh(m2, c2.vertices, c2.radius, asteroid_radius * 0.2f);
+                Sprite s2;
+                s2.color = color;
+                create_sprite(s2, c2.vertices, c2.radius, asteroid_radius * 0.2f);
 
                 t.position = center + t.orientation * vec2(0, (size.y + sep) * num_links + asteroid_radius);
 
                 uint32_t asteroid = ecs.insert_entity();
-                m2.color = color;
-                ecs.insert_component(asteroid, m2);
+                ecs.insert_component(asteroid, s2);
                 ecs.insert_component(asteroid, t);
                 ecs.insert_component(asteroid, c2);
 
@@ -453,8 +453,7 @@ void android_main(android_app* app) {
                 t.position = center + t.orientation * -vec2(0, asteroid_radius);
 
                 asteroid = ecs.insert_entity();
-                m2.color = color;
-                ecs.insert_component(asteroid, m2);
+                ecs.insert_component(asteroid, s2);
                 ecs.insert_component(asteroid, t);
                 ecs.insert_component(asteroid, c2);
 

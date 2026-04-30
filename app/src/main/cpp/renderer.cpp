@@ -196,15 +196,7 @@ void create_mesh(Mesh& m, std::vector<vec2> v, vec2 radius, bool create_interior
 }
 */
 
-void create_mesh(Mesh& m, std::vector<vec2> v, vec2 radius, float border_width) {
-    m.v_tris = std::shared_ptr<Vertices>(new Vertices);
-    m.v_tris->init();
-
-    m.v_lines = std::shared_ptr<Vertices>(new Vertices);
-    m.v_lines->init();
-
-    m.border = border_width;
-
+std::vector<Object_vertex> get_mesh(std::vector<vec2> v, vec2 radius, float border_width) {
     float sphere_segments = max(8, int32_t(8 * max(radius.x, radius.y)));
 
     std::vector<vec2> vv;
@@ -394,9 +386,80 @@ void create_mesh(Mesh& m, std::vector<vec2> v, vec2 radius, float border_width) 
         vvv.push_back(ov);
     }
 
+    return vvv;
+}
+
+void create_mesh(Mesh& m, std::vector<vec2> v, vec2 radius, float border_width) {
+    m.v_tris = std::shared_ptr<Vertices>(new Vertices);
+    m.v_tris->init();
+
+    m.border = border_width;
+
+    auto vvv = get_mesh(v, radius, border_width);
+
     m.v_tris->vertex_buffer_data(vvv.data(), vvv.size(), sizeof(Object_vertex), GL_STATIC_DRAW);
     m.v_tris->add_vertex_attribute(0, 3, GL_FLOAT, false, sizeof(float) * 6, 0);
     m.v_tris->add_vertex_attribute(1, 3, GL_FLOAT, false, sizeof(float) * 6, sizeof(float) * 3);
+}
+
+void create_sprite(Sprite& sprite, std::vector<vec2> v, vec2 radius, float border_width) {
+    sprite.border = border_width;
+
+    auto vvv = get_mesh(v, radius, border_width);
+
+    vec2 bb_min = vec2(FLT_MAX, FLT_MAX);
+    vec2 bb_max = vec2(-FLT_MAX, -FLT_MAX);
+
+    for(auto v : vvv) {
+        bb_min = min(bb_min, vec2(v.position.x, v.position.y));
+        bb_max = max(bb_max, vec2(v.position.x, v.position.y));
+    }
+
+    ivec2 size = ceil((bb_max - bb_min) * 16.0f);
+    vec2 center = (bb_min + bb_max) * 0.5f;
+
+    for(auto& v : vvv) v.position -= vec3(center, 0.0f);
+
+    //
+
+    Vertices vs;
+
+    vs.vertex_buffer_data(vvv.data(), vvv.size(), sizeof(Object_vertex), GL_STATIC_DRAW);
+    vs.add_vertex_attribute(0, 3, GL_FLOAT, false, sizeof(float) * 6, 0);
+    vs.add_vertex_attribute(1, 3, GL_FLOAT, false, sizeof(float) * 6, sizeof(float) * 3);;
+
+    std::shared_ptr<Framebuffer> fb0(new Framebuffer(size, {{{GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE}, GL_COLOR_ATTACHMENT0, 0}, {{GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE}, GL_COLOR_ATTACHMENT1, 1}}));
+
+    fb0->bind();
+
+    glViewport(0, 0, size.x, size.y);
+    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    //
+
+    mat4 identity = glm::identity<mat4>();
+    mat4 scale = glm::scale(2.0f / vec3(float(size.x) / 16.0f, float(size.y) / 16.0f, 1.0f));
+
+    core.shaders["shape_render"]->use();
+
+    vs.bind();
+
+    vec3 light = vec3(0.5f, -0.5f, 1.0f);
+
+    glUniformMatrix4fv(0, 1, false, &identity[0][0]);
+    glUniformMatrix4fv(1, 1, false, &scale[0][0]);
+    glUniformMatrix4fv(2, 1, false, &identity[0][0]);
+    glUniform4f(3, sprite.color.x, sprite.color.y, sprite.color.z, 1.0f);
+    glUniform3fv(4, 1, &light[0]);
+
+    vs.draw_vertices(GL_TRIANGLES);
+
+    sprite.color_tex = std::make_shared<Texture>(std::move(fb0->textures[0]));
+    sprite.normal_tex = std::make_shared<Texture>(std::move(fb0->textures[1]));
+    sprite.range = vec4(0.0f, 0.0f, 1.0f, 1.0f);
+    sprite.offset = -vec2(size) / 16.0f * 0.5f;
+    sprite.size = vec2(size) / 16.0f;
 }
 
 void Renderer::init() {
@@ -449,6 +512,10 @@ Renderer::Renderer() {
     Signature s = ecs.update_signature<Transform2D>();
     ecs.update_signature<Mesh>(s);
     collectors.push_back(Collector{s, false});
+
+    s = ecs.update_signature<Transform2D>();
+    ecs.update_signature<Sprite>(s);
+    collectors.push_back(Collector{s, false});
 }
 
 void Renderer::terminate() {
@@ -500,6 +567,7 @@ void Renderer::call() {
     //render_text();
 
     for(uint32_t entity : collectors[0].entities) render_mesh(entity);
+    for(uint32_t entity : collectors[1].entities) render_sprite(entity);
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, width, height);
@@ -649,18 +717,31 @@ void Renderer::render_sprite(uint32_t entity) {
 
     mat4 model = translate(vec3(transform.position, 0.0f)) * mat4(transform.orientation);
 
-    core.shaders["s"]->use();
+    core.shaders["sprite"]->use();
 
-    mesh_m.v_tris->bind();
+    /*
+    layout(location = 0) uniform mat4 proj;
+    layout(location = 1) uniform mat4 view;
+    layout(location = 2) uniform mat4 model;
+    layout(location = 3) uniform vec2 size;
+    layout(location = 4) uniform vec2 offset;
+    layout(location = 5) uniform vec4 range;
+    layout(location = 6) uniform vec3 light;
+    */
+
+    sprite.color_tex->bind(0);
+    sprite.normal_tex->bind(1);
 
     vec3 light = vec3(0.5f, -0.5f, 1.0f);
 
     glUniformMatrix4fv(0, 1, false, &proj[0][0]);
     glUniformMatrix4fv(1, 1, false, &view[0][0]);
     glUniformMatrix4fv(2, 1, false, &model[0][0]);
-    glUniform4f(3, mesh_m.color.x, mesh_m.color.y, mesh_m.color.z, 1.0f);
-    glUniform3fv(4, 1, &light[0]);
+    glUniform2fv(3, 1, &sprite.size.x); // size
+    glUniform2fv(4, 1, &sprite.offset.x); // offset
+    glUniform4fv(5, 1, &sprite.range.x); // range
+    glUniform3fv(6, 1, &light.x);
 
-    mesh_m.v_tris->draw_vertices(GL_TRIANGLES);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
 }
 
