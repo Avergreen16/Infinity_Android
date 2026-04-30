@@ -4,6 +4,7 @@
 #include <sstream>
 #include <fstream>
 #include <cstdint>
+#include <vector>
 
 #define GLM_FORCE_SWIZZLE
 #define GLM_FORCE_RADIANS
@@ -108,4 +109,38 @@ struct Texture {
     void delete_texture();
 
     ~Texture();
+};
+
+
+struct Fb_tex_params {
+    Format format;
+    GLenum attachment;
+    int32_t binding = -1;
+    int32_t layers = 1;
+};
+
+struct Framebuffer {
+    GLuint id;
+    std::vector<Texture> textures;
+    std::vector<Fb_tex_params> tex_params;
+    std::vector<GLenum> draw_buffers;
+    bool initialized = false;
+    glm::ivec2 size;
+    GLenum filter = GL_NEAREST;
+
+    Framebuffer() = default;
+    Framebuffer(Framebuffer&& a) noexcept;
+    Framebuffer& operator=(Framebuffer&& a) noexcept = default;
+
+    Framebuffer(glm::ivec2 size_, std::vector<Fb_tex_params>&& tp, GLenum filter = GL_NEAREST);
+
+    void bind_texture(std::shared_ptr<Texture> texture, GLenum attachment, int32_t binding);
+
+    void bind();
+
+    void resize(glm::ivec2 new_size);
+
+    void clear();
+
+    ~Framebuffer();
 };

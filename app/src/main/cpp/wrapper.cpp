@@ -483,3 +483,155 @@ void Texture::delete_texture() {
 Texture::~Texture() {
     glDeleteTextures(1, &id);
 }
+
+// framebuffer
+
+Framebuffer::Framebuffer(glm::ivec2 size_, std::vector<Fb_tex_params>&& tp, GLenum filter) {
+    size = size_;
+    tex_params = std::move(tp);
+    this->filter = filter;
+
+    initialized = true;
+    glGenFramebuffers(1, &id);
+    glBindFramebuffer(GL_FRAMEBUFFER, id);
+
+    for(int i = 0; i < tex_params.size(); ++i) {
+        Fb_tex_params& p = tex_params[i];
+
+        textures.emplace_back(Texture());
+        Texture& t = textures[i];
+
+        glm::ivec2 s = size;
+
+        if(p.layers > 1) {
+            glGenTextures(1, &t.id);
+            glBindTexture(GL_TEXTURE_2D_ARRAY, t.id);
+            glTexStorage3D(GL_TEXTURE_2D_ARRAY, 1, p.format.format_bits, size.x, size.y, p.layers);
+            glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, filter);
+            glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, filter);
+            glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+            t.size = glm::ivec3(size, p.layers);
+            t.format = p.format;
+            t.type = GL_TEXTURE_2D_ARRAY;
+        } else {
+            glGenTextures(1, &t.id);
+            glBindTexture(GL_TEXTURE_2D, t.id);
+            glTexStorage2D(GL_TEXTURE_2D, 1, p.format.format_bits, size.x, size.y);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+            t.size = glm::ivec3(size, 1);
+            t.format = p.format;
+            t.type = GL_TEXTURE_2D;
+        }
+
+        glFramebufferTexture2D(GL_FRAMEBUFFER, p.attachment, GL_TEXTURE_2D, t.id, 0);
+
+        if(p.binding != -1) {
+            int buffers_size = draw_buffers.size();
+
+            if(p.binding >= buffers_size) {
+                for(int j = 0; j < p.binding - buffers_size + 1; ++j) {
+                    draw_buffers.push_back(GL_NONE);
+                }
+            }
+
+            draw_buffers[p.binding] = p.attachment;
+        }
+    }
+
+    GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    if(status != GL_FRAMEBUFFER_COMPLETE) std::cerr << "FBO incomplete: " << status << std::endl;
+}
+
+Framebuffer::Framebuffer(Framebuffer&& a) noexcept {
+    id = a.id;
+    a.id = 0;
+    textures = std::move(a.textures);
+    tex_params = std::move(a.tex_params);
+    size = a.size;
+
+    draw_buffers = a.draw_buffers;
+}
+
+void Framebuffer::bind() {
+    glBindFramebuffer(GL_FRAMEBUFFER, id);
+
+    glDrawBuffers(draw_buffers.size(), draw_buffers.data());
+
+    glViewport(0, 0, size.x, size.y);
+}
+
+void Framebuffer::resize(glm::ivec2 new_size) {
+    size = new_size;
+    glBindFramebuffer(GL_FRAMEBUFFER, id);
+
+    for(int i = 0; i < tex_params.size(); i++) {
+        Fb_tex_params& p = tex_params[i];
+        Texture& t = textures[i];
+        t.bind();
+        t.delete_texture();
+
+        glGenTextures(1, &t.id);
+        glBindTexture(t.type, t.id);
+        if(t.type == GL_TEXTURE_2D_ARRAY) glTexStorage3D(t.type, 1, p.format.format_bits, size.x, size.y, t.size.z);
+        else glTexStorage2D(t.type, 1, p.format.format_bits, size.x, size.y);
+        glTexParameteri(t.type, GL_TEXTURE_MAG_FILTER, filter);
+        glTexParameteri(t.type, GL_TEXTURE_MIN_FILTER, filter);
+        glTexParameteri(t.type, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(t.type, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+        glFramebufferTexture2D(GL_FRAMEBUFFER, p.attachment, GL_TEXTURE_2D, t.id, 0);
+
+        t.size = glm::ivec3(size, 1);
+    }
+}
+
+Framebuffer::~Framebuffer() {
+    if(initialized) {
+        glDeleteFramebuffers(1, &id);
+    }
+}
+
+void Framebuffer::clear() {
+    for(int i = 0; i < textures.size(); ++i) {
+        Texture& t = textures[i];
+        Fb_tex_params& p = tex_params[i];
+    }
+}
+
+void Framebuffer::bind_texture(std::shared_ptr<Texture> texture, GLenum attachment, int32_t binding) {
+    glBindFramebuffer(GL_FRAMEBUFFER, id);
+
+    glFramebufferTexture2D(GL_FRAMEBUFFER, attachment, GL_TEXTURE_2D, texture->id, 0);
+
+    std::vector<GLenum> new_draw_buffers;
+    bool inserted = false;
+    for(int i = 0; i < draw_buffers.size(); ++i) {
+        if(!inserted) {
+            if(i == binding) {
+                inserted = true;
+                new_draw_buffers.push_back(attachment);
+            } else {
+                new_draw_buffers.push_back(draw_buffers[i]);
+            }
+        } else {
+            new_draw_buffers.push_back(draw_buffers[i]);
+        }
+    }
+
+    if(!inserted) {
+        int buffers_size = draw_buffers.size();
+        for(int i = 0; i < binding - buffers_size + 1; ++i) {
+            new_draw_buffers.push_back(GL_NONE);
+        }
+
+        new_draw_buffers[binding] = attachment;
+    }
+
+    draw_buffers = new_draw_buffers;
+}

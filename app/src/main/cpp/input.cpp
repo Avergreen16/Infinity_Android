@@ -30,11 +30,13 @@ void Input_system::call() {
     eglQuerySurface(renderer.display, renderer.surface, EGL_HEIGHT, &height);
 
     vec2 ratio;
-    if(width < height) ratio = vec2(1.0f, float(height) / width);
+    if(width > height) ratio = vec2(1.0f, float(height) / width);
     else ratio = vec2(float(width) / height, 1.0f);
 
     Transform2D& camera_transform = ecs.get_component<Transform2D>(renderer.camera);
     Camera2D& camera_camera = ecs.get_component<Camera2D>(renderer.camera);
+
+    /*
 
     if(gui_system.capture_id == 0xFFFFFFFF && held_pointer == 0xFFFFFFFF) {
         vec2 delta_motion = vec2(0.0f);
@@ -105,7 +107,7 @@ void Input_system::call() {
         // change position
 
         vec2 pos = camera_transform.orientation * vec2(-delta_motion.x, -delta_motion.y);
-        float ratio = min(width, height) * camera_camera.scale * 0.5f;
+        float ratio = max(width, height) * camera_camera.scale * 0.5f;
         pos /= ratio;
 
         camera_transform.position += pos;
@@ -151,6 +153,7 @@ void Input_system::call() {
             pointer.down = 2;
         }
     }
+     */
 
     if(pointers.find(held_pointer) != pointers.end()) {
         Pointer& pointer = pointers[held_pointer];

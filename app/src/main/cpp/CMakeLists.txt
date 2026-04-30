@@ -19,7 +19,10 @@ add_library(infinity SHARED
         camera.cpp
         input.cpp
         gui.cpp
-        physics.cpp)
+        physics.cpp
+        random.cpp
+        levels.cpp
+        )
 
 # Searches for a package provided by the game activity dependency
 find_package(game-activity REQUIRED CONFIG)

@@ -110,7 +110,6 @@ struct Window_state {
     vec2 position;
     vec2 size;
     std::string label;
-
 };
 
 struct GUI_system : System {
@@ -134,8 +133,8 @@ struct GUI_system : System {
 
     void button(vec2 position, vec2 size, ivec4 icon, bool& active);
     void window(std::string name, bool& close_window);
-    void end_window();
     void text(std::string text);
+    void end_window();
 };
 
 std::vector<UI_vertex> mesh_text(Font& f, std::string text);

@@ -3,6 +3,7 @@
 #include "renderer.h"
 #include "util.h"
 #include "wrapper.h"
+#include "random.h"
 
 template<typename type>
 type& get(std::unique_ptr<type>& a) {
@@ -82,7 +83,8 @@ struct Core {
     double delta_time = 1;
 
     // components
-    /*Random random = Random(8762340);*/
+    Random32 random = Random32(0x8FE5006);
+
     Thread_pool thread_pool;
     
     Profiler profiler;

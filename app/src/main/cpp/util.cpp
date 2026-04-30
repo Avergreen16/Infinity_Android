@@ -134,5 +134,4 @@ std::shared_ptr<Texture> create_image_texture(std::string path, ivec4 range, vec
     return t;
 }
 
-
 Profiler profiler;

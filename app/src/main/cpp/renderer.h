@@ -15,9 +15,17 @@ struct Mesh {
     std::vector<uint32_t> i;
 
     vec3 color = vec3(0.35f);
+    float border = 0.0f;
 
     std::shared_ptr<Vertices> v_lines;
     std::shared_ptr<Vertices> v_tris;
+};
+
+struct Sprite {
+    std::shared_ptr<Texture> texture;
+    vec4 range;
+    vec2 size;
+    vec2 offset;
 };
 
 struct Texture_vertex {
@@ -25,7 +33,7 @@ struct Texture_vertex {
     vec2 tex;
 };
 
-void create_mesh(Mesh& m, std::vector<vec2> v, vec2 radius, bool create_interior = true);
+void create_mesh(Mesh& m, std::vector<vec2> v, vec2 radius, float border_width);
 
 struct Renderer : System {
     Renderer();
@@ -40,6 +48,7 @@ struct Renderer : System {
     EGLContext context;
 
     std::shared_ptr<Vertices> vertices;
+    std::vector<std::shared_ptr<Framebuffer>> framebuffers;
     uint32_t camera;
 
     void init();
@@ -53,4 +62,6 @@ struct Renderer : System {
     void render_gui();
 
     void render_mesh(uint32_t entity);
+
+    void render_sprite(uint32_t entity);
 };

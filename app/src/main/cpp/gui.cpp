@@ -503,7 +503,6 @@ void GUI_system::button(vec2 position, vec2 size, ivec4 icon, bool& active) {
             }
         }
     }
-
 }
 
 void GUI_system::text(std::string text) {
