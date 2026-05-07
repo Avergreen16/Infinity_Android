@@ -9,7 +9,7 @@ Level_system::Level_system() {
     collectors.push_back(Collector{s, false});
 
     Level level;
-    level.range = vec2(0.0f, 32.0f);
+    level.range = vec4(-32.0f, 0.0f, 32.0f, 32.0f);
 
     levels.push_back(level);
 }
@@ -24,5 +24,7 @@ void Level_system::load_level(uint32_t i) {
 
     camera_transform.position = ivec2(0, (l.range.x + l.range.y) * 0.5f);
 
-    camera.scale = 1.0f / ((l.range.y - l.range.x) * 0.5f);
+    camera.scale = 1.0f / ((l.range.y - l.range.x) * 0.25f);
+
+    range = l.range;
 }

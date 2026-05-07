@@ -5,6 +5,7 @@
 #pragma once
 
 #include "ecs.h"
+#include "physics.h"
 
 #include <map>
 
@@ -22,6 +23,18 @@ struct Input_system : System {
 
     uint32_t held_pointer = 0xFFFFFFFF;
     uint32_t held_constraint;
+
+    uint32_t player_entity = 0xFFFFFFFF;
+
+    // inputs
+    vec2 joystick = vec2(0.0f);
+    uint32_t joystick_pointer = 0xFFFFFFFF;
+    float jump = 0.0f;
+    float jump_cooldown = 0.0625f;
+    float jump_charge = 0.35f;
+    uint32_t jump_pointer = 0xFFFFFFFF;
+
+    std::vector<Constraint> slime_constraints;
 
     Input_system();
     ~Input_system();

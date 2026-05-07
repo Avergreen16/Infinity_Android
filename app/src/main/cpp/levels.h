@@ -3,11 +3,12 @@
 #include "ecs.h"
 
 struct Level {
-    vec2 range;
+    vec4 range;
 };
 
 struct Level_system : System {
     std::vector<Level> levels;
+    vec4 range;
 
     Level_system();
 

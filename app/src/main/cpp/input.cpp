@@ -7,6 +7,8 @@
 #include "camera.h"
 #include "gui.h"
 #include "physics.h"
+#include "core.h"
+#include "levels.h"
 
 Input_system::Input_system() {
 
@@ -28,6 +30,7 @@ void Input_system::call() {
     int width, height;
     eglQuerySurface(renderer.display, renderer.surface, EGL_WIDTH, &width);
     eglQuerySurface(renderer.display, renderer.surface, EGL_HEIGHT, &height);
+    int min_dimension = min(width, height);
 
     vec2 ratio;
     if(width > height) ratio = vec2(1.0f, float(height) / width);
@@ -112,11 +115,13 @@ void Input_system::call() {
 
         camera_transform.position += pos;
     }
+ */
 
     for(auto& [id, pointer] : pointers) {
         pointer.prev_pos = pointer.pos;
 
         if(pointer.down == 0) {
+            /*
             if(pointers.size() == 1 && held_pointer == 0xFFFFFFFF) {
                 vec2 world_pos = camera_transform.orientation * (((pointer.pos / vec2(width, height) * 2.0f - 1.0f)) * ratio / camera_camera.scale) + camera_transform.position;
 
@@ -126,7 +131,7 @@ void Input_system::call() {
 
                     vec2 rel_point = transpose(tf.orientation) * (world_pos - tf.position);
 
-                    if(!c.is_static && physics_system.collision_point(c, rel_point)) {
+                    if(!c.is_static && physics_system.collision_point(c, vec2(0.0f), rel_point)) {
                         held_constraint = physics_system.constraints.size();
                         held_pointer = id;
 
@@ -147,14 +152,15 @@ void Input_system::call() {
                     }
                 }
             }
+            */
 
             pointer.down = 1;
         } else if(pointer.down == 1) {
             pointer.down = 2;
         }
     }
-     */
 
+    /*
     if(pointers.find(held_pointer) != pointers.end()) {
         Pointer& pointer = pointers[held_pointer];
 
@@ -167,6 +173,242 @@ void Input_system::call() {
         if(held_pointer != 0xFFFFFFFF) physics_system.constraints.erase(physics_system.constraints.begin() + held_constraint);
         held_pointer = 0xFFFFFFFF;
     }
+    */
+
+    vec2 center = vec2(width - float(min_dimension) / 8.0f * 1.125f, float(min_dimension) / 8.0f * 1.125f);
+    float radius = float(min_dimension) / 8.0f * 0.625f;
+
+    if(jump_pointer != 0xFFFFFFFF) {
+        if(pointers.find(jump_pointer) == pointers.end()) {
+            jump_pointer = 0xFFFFFFFF;
+            if(jump != 0.0f) {
+                jump = min(jump, 1.0f);
+            }
+        } else {
+            jump += core.delta_time / jump_charge;
+        }
+    } else {
+        if(jump > 0.0f) {
+            jump -= core.delta_time / jump_cooldown;
+        } else jump = 0.0f;
+    }
+
+    if(jump == 0.0f) {
+        if(pointers.size() && jump_pointer == 0xFFFFFFFF) {
+            for(auto &[id, p]: pointers) {
+                if(p.down == 1) {
+                    if (length(p.pos - center) < radius) {
+                        jump_pointer = id;
+                    }
+                }
+            }
+        }
+    }
+
+
+
+
+    // joystick
+    center = vec2(float(min_dimension) / 8.0f * 1.5f);
+    radius = float(min_dimension) / 8.0f;
+
+    joystick = vec2(0.0f);
+
+    if(joystick_pointer != 0xFFFFFFFF) {
+        if(pointers.find(joystick_pointer) == pointers.end()) {
+            joystick_pointer = 0xFFFFFFFF;
+        } else {
+            Pointer& p = pointers[joystick_pointer];
+
+            vec2 rel_pos = p.pos - center;
+            rel_pos /= radius;
+
+            if(length(rel_pos) > 1.0f) rel_pos = normalize(rel_pos);
+
+            joystick = rel_pos;
+        }
+    }
+
+    if(pointers.size() && joystick_pointer == 0xFFFFFFFF) {
+        for(auto& [id, p]: pointers) {
+            if(p.down == 1) {
+                if(length(p.pos - center) < radius) {
+                    joystick_pointer = id;
+                }
+            }
+        }
+    }
+
+    Collider& player_collider = ecs.get_component<Collider>(player_entity);
+    Transform2D& player_transform = ecs.get_component<Transform2D>(player_entity);
+
+    Physics_system& ps = ecs.get_system<Physics_system>();
+
+    // stick
+
+    struct ppoint {
+        uint32_t i;
+
+        vec2 pa = vec2(0.0f);
+        vec2 pb = vec2(0.0f);
+        vec2 normal = vec2(0.0f);
+        uint32_t n = 0;
+
+        vec2 rel;
+    };
+
+    std::vector<ppoint> points;
+
+    std::vector<Collision_data> collisions = ps.collide(player_transform, {vec2(0.0f)}, 0.5625);
+
+    slime_constraints.clear();
+    std::vector<vec2> ns;
+
+    Renderer& r = ecs.get_system<Renderer>();
+    r.points.clear();
+    r.normals.clear();
+    r.cs.clear();
+
+    for(Collision_data& d : collisions) {
+        vec2 va = normalize(d.pb) * 0.5f;
+        vec2 vb = d.pa;
+
+        bool insert = true;
+
+        vec2 global_vb = vb;
+        if(d.a != 0xFFFFFFFF) {
+            Transform2D& tf = ecs.get_component<Transform2D>(d.a);
+
+            global_vb = tf.orientation * vb + tf.position;
+        }
+
+        vec2 rel_vb = global_vb - player_transform.position;
+
+        //r.points.push_back(global_vb);
+        //r.normals.push_back(d.normal);
+
+        uint32_t ii = 0;
+
+        for(ppoint& pp : points) {
+            if(pp.i == d.a) {
+                if(length(pp.rel - rel_vb) < 0.0625f) {
+                    if(dot(normalize(pp.rel), pp.normal) < dot(normalize(rel_vb), d.normal)) {
+                        //r.cs[pp.n] = vec3(1.0f, 0.0f, 0.0f);
+                        pp.pb = vb;
+                        pp.pa = va;
+                        pp.normal = d.normal;
+                        pp.rel = rel_vb;
+                        pp.n = ii;
+
+                        //r.cs.push_back(vec3(0.0f, 1.0f, 0.0f));
+                    } else {
+                        //r.cs.push_back(vec3(1.0f, 0.0f, 0.0f));
+                    }
+
+                    insert = false;
+                    break;
+                } else {
+                    float da = dot(rel_vb - pp.rel, pp.normal);
+                    float db = dot(pp.rel - rel_vb, d.normal);
+                    if(da >= -0.0001f && length(pp.rel) < length(rel_vb)) {
+                        insert = false;
+
+                        //r.cs.push_back(vec3(0.0f, 0.0f, 1.0f));
+
+                        break;
+                    } else if(db >= -0.0001f && length(pp.rel) > length(rel_vb)) {
+                        //r.cs[pp.n] = vec3(0.0f, 0.0f, 1.0f);
+                        pp.pb = vb;
+                        pp.pa = va;
+                        pp.normal = d.normal;
+                        pp.rel = rel_vb;
+                        pp.n = ii;
+
+                        //r.cs.push_back(vec3(0.0f, 1.0f, 0.0f));
+
+                        insert = false;
+                        break;
+                    }
+                }
+            }
+
+            ++ii;
+        }
+
+        if(insert) {
+            ppoint new_pp;
+            new_pp.n = points.size();
+            new_pp.pa = va;
+            new_pp.pb = vb;
+            new_pp.normal = d.normal;
+
+            new_pp.i = d.a;
+
+            new_pp.rel = rel_vb;
+
+            points.push_back(new_pp);
+
+            //r.cs.push_back(vec3(0.0f, 1.0f, 0.0f));
+        }
+
+        //r.points.push_back(va + player_transform.position);
+        //r.normals.push_back(d.normal);
+        //r.cs.push_back(vec3(1.0f, 1.0f, 0.25f));
+    }
+
+    //LOGD("%i, %i", points.size(), collisions.size());
+
+    for(ppoint pp : points) {
+        //r.points.push_back(pp.rel + player_transform.position);
+        //r.normals.push_back(pp.normal);
+        //r.cs.push_back(true);
+
+        Constraint constraint;
+
+        constraint.a = player_entity;
+        constraint.b = pp.i;
+
+        pos_constraint c;
+        c.a = pp.pa;
+        c.b = pp.pb;
+        c.vs = {normalize(pp.normal)};
+        //c.vs = {normalize(vec2(0.0f, 1.0f))};
+
+
+        c.limit = 0.75f;
+
+        constraint.pos = {c};
+        ns.push_back(normalize(pp.normal));
+
+        slime_constraints.push_back(constraint);
+    }
+
+    //if(player_collider.colliding_with.size()) player_collider.allow_gravity = false;
+    //else player_collider.allow_gravity = true;
+
+
+    // movement
+    vec2 up = vec2(0.0f, 1.0f);
+    float mm = FLT_MAX;
+    for(vec2 n : ns) {
+        float m = abs(dot(n, joystick));
+
+        if(mm > m) {
+            up = n;
+            mm = m;
+        }
+    }
+
+    vec2 target_velocity = joystick;
+    target_velocity *= 6.0f;
+
+    vec2 diff = target_velocity - player_collider.velocity;
+    diff = diff - up * dot(up, diff);
+
+    vec2 delta = diff;
+    if(length(delta) > core.delta_time * 10000.0f) delta *= core.delta_time * 10000.0f / length(delta);
+
+    player_collider.velocity += delta;
 }
 
 

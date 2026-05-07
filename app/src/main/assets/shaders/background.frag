@@ -49,7 +49,7 @@ void main() {
         float dist_from_center = abs(coords.x);
 
         float alpha = clamp(1.0 - (ddx / (grid_width * 0.125f)), 0.0f, 1.0f);
-        float w = 0.5f;//clamp(1.0f + alpha, 1.0f, 2.0f);
+        float w = 1.001f;//clamp(1.0f + alpha, 1.0f, 2.0f);
         if(dist_from_line < ddx * w) {
             /*
             if(dist_from_center < ddx * w) {
@@ -64,7 +64,7 @@ void main() {
         dist_from_center = abs(coords.y);
 
         alpha = clamp(1.0 - (ddy / (grid_width * 0.125f)), 0.0f, 1.0f);
-        w = 0.5f;//clamp(1.0f + alpha, 1.0f, 2.0f);
+        w = 1.001f;//clamp(1.0f + alpha, 1.0f, 2.0f);
         if(dist_from_line < ddy * w) {
             /*
             if(dist_from_center < ddy * w) {

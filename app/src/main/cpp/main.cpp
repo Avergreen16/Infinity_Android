@@ -54,10 +54,10 @@ void handle_cmd(android_app *app, int32_t cmd) {
 
             for(uint32_t entity : physics_system.collectors[0].entities) {
                 Collider& collider = ecs.get_component<Collider>(entity);
-                Sprite& sprite = ecs.get_component<Sprite>(entity);
+                Mesh& mesh = ecs.get_component<Mesh>(entity);
 
-                //create_mesh(mesh, collider.vertices, collider.radius, mesh.border);
-                create_sprite(sprite, collider.vertices, collider.radius, sprite.border);
+                create_mesh(mesh, collider);
+                //create_sprite(sprite, collider.vertices, collider.radius, sprite.border);
             }
 
             break;
@@ -142,6 +142,7 @@ void android_main(android_app* app) {
     double time = get_time();
     core.start_time = time;
 
+    Input_system &input_system = ecs.get_system<Input_system>();
 
     Renderer &renderer = ecs.get_system<Renderer>();
     app->onAppCmd = handle_cmd;
@@ -278,23 +279,44 @@ void android_main(android_app* app) {
             };
 
             Collider c;
-            c.radius = vec2(0.0f);
-            c.vertices = square;
-            for(vec2& v : c.vertices) v *= vec2(256, 2);
+
+            Collision_shape cs;
+            cs.radius = vec2(0.0f);
+            cs.vertices = square;
+            for(vec2& v : cs.vertices) v *= vec2(0.5f);
+
+            std::vector<ivec4> chunks = {
+                    ivec4(-32, -1, 32, 2),
+                    ivec4(-32, 2, -30, 30),
+                    ivec4(30, 2, 32, 30),
+                    ivec4(-32, 30, 32, 33),
+                    ivec4(-1, 8, 1, 30),
+            };
+
+            for(ivec4 chunk : chunks) {
+                for(int x = chunk.x; x < chunk.z; ++x) {
+                    for(int y = chunk.y; y < chunk.w; ++y) {
+                        cs.position = vec2(x + 0.5f, y + 0.5f);
+                        c.shapes.push_back(cs);
+                    }
+                }
+            }
 
             c.is_static = true;
 
-            Sprite s;
-            s.color = hsv_color(abs(core.random()), 0.7f, 0.9f);
-            create_sprite(s, c.vertices, c.radius, 0.5f);
+            c.create_BVH();
+
+            Mesh m;
+            m.color = hsv_color(0.0f, 0.0f, 0.5f);
+            create_mesh(m, c);
 
             uint32_t entity = ecs.insert_entity();
 
-            ecs.insert_component(entity, s);
+            ecs.insert_component(entity, m);
             ecs.insert_component(entity, t);
             ecs.insert_component(entity, c);
 
-            auto insert_square = [&](vec2 pos, vec2 size, mat2 ori) {
+            auto insert_shape = [&](vec2 pos, vec2 size, std::vector<vec2> origins, vec3 color, mat2 ori) {
                 uint32_t entity = ecs.insert_entity();
 
                 Transform2D t;
@@ -303,49 +325,157 @@ void android_main(android_app* app) {
 
 
                 Collider c;
-                c.vertices = {
+
+                Collision_shape cs;
+                cs.vertices = {
                         vec2(-1, -1),
                         vec2(1, -1),
                         vec2(1, 1),
                         vec2(-1, 1)
                 };
-                for(vec2& v : c.vertices) v *= size * 0.5f;
-                c.radius = vec2(0.0f);
-                c.mass = size.x * size.y * 25.0f;
-                //c.allow_rotation = false;
+                for(vec2& v : cs.vertices) v *= size * 0.5f;
+                cs.radius = vec2(0.0f);
+                cs.mass = size.x * size.y * 25.0f;
+
+                for(vec2 v : origins) {
+                    cs.position = v * size;
+                    c.shapes.push_back(cs);
+                }
 
                 vec2 shift = Physics_system::calculate_inertia(c);
                 t.position += shift;
 
-                Sprite s;
-                s.color = hsv_color(abs(core.random()), 0.7f, 0.9f);
-                create_sprite(s, c.vertices, c.radius, min(size.y, size.x) * 0.2f);
+                Mesh m;
+                m.color = color;
+                create_mesh(m, c);
 
-                ecs.insert_component(entity, s);
+                ecs.insert_component(entity, m);
                 ecs.insert_component(entity, t);
                 ecs.insert_component(entity, c);
+
+                return entity;
             };
 
-            vec2 origin = vec2(0.0f, 16.0f);
+            auto insert_square = [&](vec2 pos, vec3 color, vec2 size, mat2 ori, bool allow_rotation = true) {
+                uint32_t entity = ecs.insert_entity();
+
+                Transform2D t;
+                t.position = pos;
+                t.orientation = ori;
+
+
+                Collider c;
+
+                Collision_shape cs;
+                cs.vertices = {
+                        vec2(-1, -1),
+                        vec2(1, -1),
+                        vec2(1, 1),
+                        vec2(-1, 1)
+                };
+                for(vec2& v : cs.vertices) v *= size * 0.5f;
+                cs.radius = vec2(0.0f);
+                cs.mass = size.x * size.y * 25.0f;
+                c.shapes.push_back(cs);
+
+                c.allow_rotation = allow_rotation;
+
+                vec2 shift = Physics_system::calculate_inertia(c);
+                t.position += shift;
+
+                Mesh m;
+                m.color = color;
+                create_mesh(m, c);
+
+                ecs.insert_component(entity, m);
+                ecs.insert_component(entity, t);
+                ecs.insert_component(entity, c);
+
+                return entity;
+            };
+
+            auto insert_circle = [&](vec2 pos, vec3 color, float size, mat2 ori, bool allow_rotation = true) {
+                uint32_t entity = ecs.insert_entity();
+
+                Transform2D t;
+                t.position = pos;
+                t.orientation = ori;
+
+
+                Collider c;
+
+                Collision_shape cs;
+                cs.vertices = {
+                        vec2(0.0f),
+                };
+
+                cs.radius = vec2(size);
+                cs.mass = size * size * 25.0f;
+                c.shapes.push_back(cs);
+
+                c.allow_rotation = allow_rotation;
+
+                vec2 shift = Physics_system::calculate_inertia(c);
+                //t.position += shift;
+
+                Mesh m;
+                m.color = color;
+                create_mesh(m, c);
+
+                ecs.insert_component(entity, m);
+                ecs.insert_component(entity, t);
+                ecs.insert_component(entity, c);
+
+                return entity;
+            };
+
+            input_system.player_entity = insert_circle(vec2(0.5f, 3.0f), hsv_color(3.8f / 6.0f, 0.7f, 0.9f), 0.5f, identity<mat2>(), false);
+
+            vec2 origin = vec2(16.0f, 16.0f);
             float sep = 0.25f;
             uint32_t square_size = 4;
             mat2 ori = glm::rotate(float(M_PI * 0.33333f), vec3(0.0f, 0.0f, 1.0f));
 
-            for(int y = 0; y < square_size; ++y) {
+            //
+            vec2 size = vec2(1.5f);
+            std::vector<vec2> origins = {
+                    vec2(-1, -2),
+                    vec2(1, -2),
+
+                    vec2(-1, -1),
+                    vec2(0, -1),
+                    vec2(1, -1),
+
+                    vec2(-2, 0),
+                    vec2(-1, 0),
+                    vec2(0, 0),
+                    vec2(1, 0),
+                    vec2(2, 0),
+
+                    vec2(0, 1),
+
+                    vec2(0, 2),
+            };
+
+            insert_shape(origin, size, origins, hsv_color(0.5f / 6.0f, 0.7f, 0.9f), ori);
+
+            /*for(int y = 0; y < square_size; ++y) {
                 for (int x = 0; x < square_size * 2; ++x) {
                     vec2 s = vec2(float(x) - square_size * 0.5f, float(y) - square_size * 0.5f) * (1.0f + sep);
 
                     s = ori * s;
 
-                    insert_square(origin + s, vec2(1.0f), ori);
+                    insert_square(origin + s, hsv_color(0.5f / 6.0f, 0.7f, 0.9f), vec2(1.0f), ori);
                 }
-            }
+            }*/
 
-            vec3 color = hsv_color(abs(core.random()), 0.7f, 0.9f);
+            vec3 color = hsv_color(0.5f / 6.0f, 0.7f, 0.9f);
 
             //chain
+
+            /*
             {
-                vec2 center = vec2(4.0f, 24.0f);
+                vec2 center = vec2(4.0f, 16.0f);
 
                 std::set<uint32_t> non_colliding;
                 Physics_system& ps = ecs.get_system<Physics_system>();
@@ -363,17 +493,21 @@ void android_main(android_app* app) {
                 t.orientation = {up, vec2(-up.y, up.x)};
 
                 Collider c;
-                c.vertices = {vec2(0, -(size.y - size.x) * 0.5f), vec2(0.0f, (size.y - size.x) * 0.5f)};
-                c.radius = vec2(size.x * 0.5f);
-                c.mass = 0x6 * scale * scale;
+
+                Collision_shape cs;
+                cs.vertices = {vec2(0, -(size.y - size.x) * 0.5f), vec2(0.0f, (size.y - size.x) * 0.5f)};
+                cs.radius = vec2(size.x * 0.5f);
+                cs.mass = 0x6 * scale * scale;
+                c.shapes.push_back(cs);
+
                 vec2 shift = Physics_system::calculate_inertia(c);
                 t.position += t.orientation * shift;
                 t.position += t.orientation * vec2(0, size.y * 0.5f);
                 //c.allow_rotation = false;
 
-                Sprite s;
-                s.color = color;
-                create_sprite(s, c.vertices, c.radius, size.x * 0.2f);
+                Mesh m;
+                m.color = hsv_color(0.5f / 6.0f, 0.7f, 0.9f);
+                create_mesh(m, c);
 
                 uint32_t prev_entity = NULL_ENTITY;
                 uint32_t first_entity;
@@ -382,7 +516,7 @@ void android_main(android_app* app) {
                     uint32_t capsule = ecs.insert_entity();
                     non_colliding.emplace(capsule);
 
-                    ecs.insert_component(capsule, s);
+                    ecs.insert_component(capsule, m);
                     ecs.insert_component(capsule, t);
                     ecs.insert_component(capsule, c);
 
@@ -415,21 +549,25 @@ void android_main(android_app* app) {
                 float asteroid_radius = 0.5f * scale;
 
                 Collider c2;
-                c2.vertices = {vec2(0, 0)};
-                c2.radius = vec2(asteroid_radius);
-                c2.mass = 0x30 * scale * scale;
+
+                Collision_shape cs2;
+                cs2.vertices = {vec2(0, 0)};
+                cs2.radius = vec2(asteroid_radius);
+                cs2.mass = 0x30 * scale * scale;
+                c2.shapes.push_back(cs2);
+
                 shift = Physics_system::calculate_inertia(c2);
                 t.position += t.orientation * shift;
                 t.position += t.orientation * vec2(0, 1.0f);
 
-                Sprite s2;
-                s2.color = color;
-                create_sprite(s2, c2.vertices, c2.radius, asteroid_radius * 0.2f);
+                Mesh m2;
+                m2.color = hsv_color(0.5f / 6.0f, 0.7f, 0.9f);
+                create_mesh(m2, c2);
 
                 t.position = center + t.orientation * vec2(0, (size.y + sep) * num_links + asteroid_radius);
 
                 uint32_t asteroid = ecs.insert_entity();
-                ecs.insert_component(asteroid, s2);
+                ecs.insert_component(asteroid, m2);
                 ecs.insert_component(asteroid, t);
                 ecs.insert_component(asteroid, c2);
 
@@ -453,7 +591,7 @@ void android_main(android_app* app) {
                 t.position = center + t.orientation * -vec2(0, asteroid_radius);
 
                 asteroid = ecs.insert_entity();
-                ecs.insert_component(asteroid, s2);
+                ecs.insert_component(asteroid, m2);
                 ecs.insert_component(asteroid, t);
                 ecs.insert_component(asteroid, c2);
 
@@ -472,6 +610,7 @@ void android_main(android_app* app) {
                     ps.constraints.push_back(constraint);
                 }
             }
+            */
         }
 
         /*
