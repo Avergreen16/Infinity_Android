@@ -226,7 +226,7 @@ std::vector<vec2> get_mesh(std::vector<vec2> v, vec2 radius) {
 
                 float angle_per_segment = 2 * M_PI / sphere_segments;
 
-                for(float j = angle_a + angle_per_segment; j < angle_b; j += angle_per_segment) {
+                for(float j = angle_a; j <= angle_b; j += angle_per_segment) {
                     vec2 vc = {cos(j), sin(j)};
                     vc *= radius;
                     vc = v0 + vc;
@@ -267,7 +267,7 @@ std::vector<vec2> get_mesh(std::vector<vec2> v, vec2 radius) {
 
                     float angle_per_segment = 2 * M_PI / sphere_segments;
 
-                    for(float j = angle_a + angle_per_segment; j < angle_b; j += angle_per_segment) {
+                    for(float j = angle_a; j <= angle_b; j += angle_per_segment) {
                         vec2 vc = {cos(j), sin(j)};
                         vc *= radius;
                         vc = v0 + vc;
@@ -290,7 +290,7 @@ std::vector<vec2> get_mesh(std::vector<vec2> v, vec2 radius) {
 
                     float angle_per_segment = 2 * M_PI / sphere_segments;
 
-                    for(float j = angle_a + angle_per_segment; j < angle_b; j += angle_per_segment) {
+                    for(float j = angle_a; j <= angle_b; j += angle_per_segment) {
                         vec2 vc = {cos(j), sin(j)};
                         vc *= radius;
                         vc = v1 + vc;
@@ -310,6 +310,17 @@ std::vector<vec2> get_mesh(std::vector<vec2> v, vec2 radius) {
 }
 
 void create_mesh(Mesh& m, std::vector<vec2> v, vec2 radius) {
+    if(m.v_lines) {
+        m.v_lines->vertex_buffer = 0;
+        m.v_lines->index_buffer = 0;
+        m.v_lines->vertex_array = 0;
+    }
+    if(m.v_tris) {
+        m.v_tris->vertex_buffer = 0;
+        m.v_tris->index_buffer = 0;
+        m.v_tris->vertex_array = 0;
+    }
+
     m.v_lines = std::shared_ptr<Vertices>(new Vertices);
     m.v_lines->init();
     m.v_tris = std::shared_ptr<Vertices>(new Vertices);
@@ -354,6 +365,17 @@ void create_mesh(Mesh& m, std::vector<vec2> v, vec2 radius) {
 }
 
 void create_mesh(Mesh& m, Collider& c) {
+    if(m.v_lines) {
+        m.v_lines->vertex_buffer = 0;
+        m.v_lines->index_buffer = 0;
+        m.v_lines->vertex_array = 0;
+    }
+    if(m.v_tris) {
+        m.v_tris->vertex_buffer = 0;
+        m.v_tris->index_buffer = 0;
+        m.v_tris->vertex_array = 0;
+    }
+
     m.v_lines = std::shared_ptr<Vertices>(new Vertices);
     m.v_lines->init();
     m.v_tris = std::shared_ptr<Vertices>(new Vertices);
@@ -438,10 +460,14 @@ void Renderer::init() {
     eglQuerySurface(display, surface, EGL_HEIGHT, &height);
 
     int pixel_size = 1;
-    ivec2 fb_size = ivec2(width, height) / pixel_size;
+    ivec2 fb_size = ivec2(width, height);
 
     std::shared_ptr<Framebuffer> fb0(new Framebuffer(fb_size, {{{GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE}, GL_COLOR_ATTACHMENT0, 0}}));
     framebuffers.push_back(fb0);
+
+    fb_size = ivec2(32);
+    std::shared_ptr<Framebuffer> fb1(new Framebuffer(fb_size, {{{GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE}, GL_COLOR_ATTACHMENT0, 0}}));
+    framebuffers.push_back(fb1);
 }
 
 Renderer::Renderer() {
@@ -451,6 +477,9 @@ Renderer::Renderer() {
 
     s = ecs.update_signature<Transform2D>();
     ecs.update_signature<Sprite>(s);
+    collectors.push_back(Collector{s, false});
+
+    s = ecs.update_signature<Soft_body>();
     collectors.push_back(Collector{s, false});
 }
 
@@ -466,11 +495,14 @@ Renderer::~Renderer() {
 
 void Renderer::call() {
     // screen
-
-    // calculate camera view
     int width, height;
     eglQuerySurface(display, surface, EGL_WIDTH, &width);
     eglQuerySurface(display, surface, EGL_HEIGHT, &height);
+
+    screen_size = {width, height};
+
+
+    // calculate camera view
 
     vec2 ratio;
     if(width > height) ratio = vec2(1.0f, float(height) / width);
@@ -549,6 +581,8 @@ void Renderer::call() {
 
     for(uint32_t entity : collectors[0].entities) render_mesh(entity);
     for(uint32_t entity : collectors[1].entities) render_sprite(entity);
+    for(uint32_t entity : collectors[2].entities) render_soft_body(entity);
+    //render_slime(is.player_entity);
     render_points();
 
     //framebuffers[0]->bind();
@@ -595,11 +629,7 @@ void Renderer::render_background() {
 
     mat4 view = inv_rot * scale(vec3(cc.scale, cc.scale, 1.0f)) * translate(vec3(-ct.position, 0.0f));
 
-    int width, height;
-    eglQuerySurface(display, surface, EGL_WIDTH, &width);
-    eglQuerySurface(display, surface, EGL_HEIGHT, &height);
-
-    float aspect_ratio = float(height) / width;
+    float aspect_ratio = float(screen_size.y) / screen_size.x;
     mat4 proj = cc.proj;
 
     core.shaders["background"]->use();
@@ -608,9 +638,98 @@ void Renderer::render_background() {
 
     glUniformMatrix4fv(0, 1, false, &view[0][0]);
     glUniformMatrix4fv(1, 1, false, &proj[0][0]);
-    glUniform2f(2, float(width), float(height));
+    glUniform2f(2, float(screen_size.x), float(screen_size.y));
 
     vertices->draw_vertices(GL_TRIANGLES);
+}
+
+void Renderer::render_soft_body(uint32_t entity) {
+    Soft_body& soft_body = ecs.get_component<Soft_body>(entity);
+
+    //
+
+    std::vector<Object_vertex> lines;
+    std::vector<Object_vertex> tris;
+
+    vec2 center = vec2(0.0f);
+    for(auto p : soft_body.points) {
+        center += p.position;
+    }
+    center /= float(soft_body.points.size());
+
+    for(int i = 0; i < soft_body.points.size(); ++i) {
+        vec2 a = soft_body.points[i].position;
+        vec2 b = soft_body.points[(i + 1) % soft_body.points.size()].position;
+
+        Object_vertex v;
+        v.normal = vec3(0.0f, 0.0f, 1.0f);
+
+        v.position = vec3(a, 0.5f);
+        lines.push_back(v);
+        v.position = vec3(b, 0.5f);
+        lines.push_back(v);
+
+        v.position = vec3(a, 0.5f);
+        tris.push_back(v);
+        v.position = vec3(b, 0.5f);
+        tris.push_back(v);
+        v.position = vec3(center, 0.5f);
+        tris.push_back(v);
+    }
+
+    //
+
+    Transform2D& ct = ecs.get_component<Transform2D>(camera);
+    Camera2D& cc = ecs.get_component<Camera2D>(camera);
+
+    mat4 inv_rot = mat4(transpose(ct.orientation));
+
+    mat4 view = inv_rot * scale(vec3(cc.scale, cc.scale, 1.0f)) * translate(vec3(-ct.position, 0.0f));
+
+    float aspect_ratio = float(screen_size.y) / screen_size.x;
+    mat4 proj = cc.proj;
+
+    mat4 model = identity<mat4>();
+
+    core.shaders["shape"]->use();
+
+    vec3 light = vec3(0.5f, -0.5f, 1.0f);
+
+    glLineWidth(2);
+
+    vec3 color = vec3(1.0f, 0.25f, 0.25f);
+
+    //
+
+    vertices->vertex_buffer_data(tris.data(), tris.size(), sizeof(Object_vertex), GL_STATIC_DRAW);
+    vertices->add_vertex_attribute(0, 3, GL_FLOAT, false, sizeof(float) * 6, 0);
+    vertices->add_vertex_attribute(1, 3, GL_FLOAT, false, sizeof(float) * 6, sizeof(float) * 3);
+    vertices->bind();
+
+    glUniformMatrix4fv(0, 1, false, &proj[0][0]);
+    glUniformMatrix4fv(1, 1, false, &view[0][0]);
+    glUniformMatrix4fv(2, 1, false, &model[0][0]);
+    glUniform4f(3, color.x, color.y, color.z,  0.35f);
+    glUniform3fv(4, 1, &light[0]);
+
+    vertices->draw_vertices(GL_TRIANGLES);
+
+    //
+    vertices->vertex_buffer_data(lines.data(), lines.size(), sizeof(Object_vertex), GL_STATIC_DRAW);
+    vertices->add_vertex_attribute(0, 3, GL_FLOAT, false, sizeof(float) * 6, 0);
+    vertices->add_vertex_attribute(1, 3, GL_FLOAT, false, sizeof(float) * 6, sizeof(float) * 3);
+    vertices->bind();
+
+    glUniformMatrix4fv(0, 1, false, &proj[0][0]);
+    glUniformMatrix4fv(1, 1, false, &view[0][0]);
+    glUniformMatrix4fv(2, 1, false, &model[0][0]);
+    glUniform4f(3, color.x, color.y, color.z, 1.0f);
+    glUniform3fv(4, 1, &light[0]);
+
+    vertices->draw_vertices(GL_LINES);
+
+
+
 }
 
 void Renderer::render_gui() {
@@ -618,13 +737,11 @@ void Renderer::render_gui() {
     Transform2D& ct = ecs.get_component<Transform2D>(camera);
     Camera2D& cc = ecs.get_component<Camera2D>(camera);
 
-    int width, height;
-    eglQuerySurface(display, surface, EGL_WIDTH, &width);
-    eglQuerySurface(display, surface, EGL_HEIGHT, &height);
-
     float text_scale = 3.0f;
 
-    mat4 proj = translate(vec3(-1.0f, -1.0f, 0.0f)) * scale(vec3(2.0f / float(width), 2.0f / float(height), 1.0f));
+    mat4 inv = scale(vec3(1.0f, -1.0f, 1.0f));
+
+    mat4 proj = translate(vec3(-1.0f, -1.0f, 0.0f)) * scale(vec3(2.0f / float(screen_size.x), 2.0f / float(screen_size.y), 1.0f));
     mat4 view = identity<mat4>();
     mat4 model = identity<mat4>();
 
@@ -659,11 +776,7 @@ void Renderer::render_mesh(uint32_t entity) {
 
     mat4 view = inv_rot * scale(vec3(cc.scale, cc.scale, 1.0f)) * translate(vec3(-ct.position, 0.0f));
 
-    int width, height;
-    eglQuerySurface(display, surface, EGL_WIDTH, &width);
-    eglQuerySurface(display, surface, EGL_HEIGHT, &height);
-
-    float aspect_ratio = float(height) / width;
+    float aspect_ratio = float(screen_size.y) / screen_size.x;
     mat4 proj = cc.proj;
 
     Transform2D& mesh_t = ecs.get_component<Transform2D>(entity);
@@ -710,11 +823,7 @@ void Renderer::render_sprite(uint32_t entity) {
 
     mat4 view = inv_rot * scale(vec3(cc.scale, cc.scale, 1.0f)) * translate(vec3(-ct.position, 0.0f));
 
-    int width, height;
-    eglQuerySurface(display, surface, EGL_WIDTH, &width);
-    eglQuerySurface(display, surface, EGL_HEIGHT, &height);
-
-    float aspect_ratio = float(height) / width;
+    float aspect_ratio = float(screen_size.y) / screen_size.x;
     mat4 proj = cc.proj;
 
     Transform2D& transform = ecs.get_component<Transform2D>(entity);
@@ -758,11 +867,7 @@ void Renderer::render_points() {
 
     mat4 view = inv_rot * scale(vec3(cc.scale, cc.scale, 1.0f)) * translate(vec3(-ct.position, 0.0f));
 
-    int width, height;
-    eglQuerySurface(display, surface, EGL_WIDTH, &width);
-    eglQuerySurface(display, surface, EGL_HEIGHT, &height);
-
-    float aspect_ratio = float(height) / width;
+    float aspect_ratio = float(screen_size.y) / screen_size.x;
     mat4 proj = cc.proj;
 
     uint32_t i = 0;
@@ -851,13 +956,9 @@ void Renderer::render_buttons() {
 
     // setup
 
-    int width, height;
-    eglQuerySurface(display, surface, EGL_WIDTH, &width);
-    eglQuerySurface(display, surface, EGL_HEIGHT, &height);
+    int min_dimension = min(screen_size.x, screen_size.y);
 
-    int min_dimension = min(width, height);
-
-    mat4 proj = translate(vec3(-1.0f, -1.0f, 0.0f)) * scale(vec3(2.0f / float(width), 2.0f / float(height), 1.0f));
+    mat4 proj = translate(vec3(-1.0f, -1.0f, 0.0f)) * scale(vec3(2.0f / float(screen_size.x), 2.0f / float(screen_size.y), 1.0f));
     mat4 view = identity<mat4>();
     mat4 model = identity<mat4>();
 
@@ -926,7 +1027,7 @@ void Renderer::render_buttons() {
 
     buffer.clear();
 
-    pos = vec2(width - min_dimension / 8.0f * 1.125f, min_dimension / 8.0f * 1.125f);
+    pos = vec2(screen_size.x - min_dimension / 8.0f * 1.5f, min_dimension / 8.0f * 1.5f);
     float radius = mix(0.625f, 0.75f, clamp(input_system.jump, 0.0f, 1.0f));
 
     for(int i = 0; i < vs.size(); ++i) {
@@ -943,5 +1044,68 @@ void Renderer::render_buttons() {
     vertices->add_vertex_attribute(0, 3, GL_FLOAT, false, sizeof(vec3), 0);
 
     vertices->draw_vertices(GL_TRIANGLES);
+}
+
+
+
+void Renderer::render_slime(uint32_t entity) {
+    Input_system& is = ecs.get_system<Input_system>();
+
+    Transform2D& transform = ecs.get_component<Transform2D>(entity);
+
+    // slime texture
+
+    framebuffers[1]->bind();
+
+    glViewport(0, 0, 32, 32);
+    glDisable(GL_DEPTH_TEST);
+    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    core.shaders["slime"]->use();
+
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+
+    // slime render
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, screen_size.x, screen_size.y);
+
+    Transform2D& ct = ecs.get_component<Transform2D>(camera);
+    Camera2D& cc = ecs.get_component<Camera2D>(camera);
+
+    mat4 inv_rot = mat4(transpose(ct.orientation));
+
+    mat4 view = inv_rot * scale(vec3(cc.scale, cc.scale, 1.0f)) * translate(vec3(-ct.position, 0.0f));
+
+    float aspect_ratio = float(screen_size.y) / screen_size.x;
+    mat4 proj = cc.proj;
+
+    mat4 model = translate(vec3(transform.position, 0.0f)) * mat4(transform.orientation);
+
+    core.shaders["sprite"]->use();
+
+    /*
+    layout(location = 0) uniform mat4 proj;
+    layout(location = 1) uniform mat4 view;
+    layout(location = 2) uniform mat4 model;
+    layout(location = 3) uniform vec2 size;
+    layout(location = 4) uniform vec2 offset;
+    layout(location = 5) uniform vec4 range;
+    layout(location = 6) uniform vec3 light;
+    */
+
+    framebuffers[1]->textures[0].bind(0);
+
+    vec3 light = vec3(0.5f, -0.5f, 1.0f);
+
+    glUniformMatrix4fv(0, 1, false, &proj[0][0]);
+    glUniformMatrix4fv(1, 1, false, &view[0][0]);
+    glUniformMatrix4fv(2, 1, false, &model[0][0]);
+    glUniform2f(3, 2.0f, 2.0f); // size
+    glUniform2f(4, -1.0f, -1.0f); // offset
+    glUniform4f(5, 0.0f, 0.0f, 1.0f, 1.0f); // range
+
+    glDrawArrays(GL_TRIANGLES, 0, 6);
 }
 

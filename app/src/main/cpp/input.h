@@ -30,7 +30,7 @@ struct Input_system : System {
     vec2 joystick = vec2(0.0f);
     uint32_t joystick_pointer = 0xFFFFFFFF;
     float jump = 0.0f;
-    float jump_cooldown = 0.0625f;
+    float jump_cooldown = 0.075f;
     float jump_charge = 0.35f;
     uint32_t jump_pointer = 0xFFFFFFFF;
 

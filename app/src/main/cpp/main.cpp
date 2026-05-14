@@ -38,6 +38,7 @@ void handle_cmd(android_app *app, int32_t cmd) {
             core.shaders.emplace("shape", std::shared_ptr<Shader>(new Shader("shaders/shape.vert", "shaders/shape.frag")));
             core.shaders.emplace("shape_render", std::shared_ptr<Shader>(new Shader("shaders/shape_render.vert", "shaders/shape_render.frag")));
             core.shaders.emplace("sprite", std::shared_ptr<Shader>(new Shader("shaders/sprite.vert", "shaders/sprite.frag")));
+            core.shaders.emplace("slime", std::shared_ptr<Shader>(new Shader("shaders/slime.vert", "shaders/slime.frag")));
 
             core.textures.emplace("grid", std::shared_ptr<Texture>(new Texture("textures/grid.png", {GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE}, 4)));
             core.textures.emplace("text", std::shared_ptr<Texture>(new Texture("textures/text_mono.png", {GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE}, 4)));
@@ -107,14 +108,6 @@ void android_main(android_app* app) {
     if(!init) {
         ecs.entity_manager.init();
 
-        ecs.register_component<Transform>();
-        ecs.register_component<Camera>();
-        ecs.register_component<Transform2D>();
-        ecs.register_component<Camera2D>();
-        ecs.register_component<Mesh>();
-        ecs.register_component<Collider>();
-        ecs.register_component<Sprite>();
-
         ecs.register_system<Renderer>();
         ecs.register_system<GUI_system>();
         ecs.register_system<Input_system>();
@@ -138,11 +131,18 @@ void android_main(android_app* app) {
         ecs.get_system<Level_system>().load_level(0);
     }
 
+    Soft_body b;
+    b.create({vec2(-0.5f, -0.5f), vec2(0.5f, -0.5f), vec2(0.5f, 0.5f), vec2(-0.5f, 0.5f)}, vec2(0.0f, 5.0f), 40.0f);
+
+    uint32_t entity = ecs.insert_entity();
+    ecs.insert_component(entity, b);
+
 
     double time = get_time();
     core.start_time = time;
 
     Input_system &input_system = ecs.get_system<Input_system>();
+    Physics_system &physics_system = ecs.get_system<Physics_system>();
 
     Renderer &renderer = ecs.get_system<Renderer>();
     app->onAppCmd = handle_cmd;
@@ -286,11 +286,11 @@ void android_main(android_app* app) {
             for(vec2& v : cs.vertices) v *= vec2(0.5f);
 
             std::vector<ivec4> chunks = {
-                    ivec4(-32, -1, 32, 2),
-                    ivec4(-32, 2, -30, 30),
-                    ivec4(30, 2, 32, 30),
-                    ivec4(-32, 30, 32, 33),
-                    ivec4(-1, 8, 1, 30),
+                    ivec4(-16, -1, 16, 2),
+                    ivec4(-16, 2, -14, 30),
+                    ivec4(14, 2, 16, 30),
+                    ivec4(-16, 30, 16, 33),
+                    //ivec4(-1, 8, 1, 30),
             };
 
             for(ivec4 chunk : chunks) {
@@ -429,47 +429,71 @@ void android_main(android_app* app) {
                 return entity;
             };
 
-            input_system.player_entity = insert_circle(vec2(0.5f, 3.0f), hsv_color(3.8f / 6.0f, 0.7f, 0.9f), 0.5f, identity<mat2>(), false);
+            input_system.player_entity = insert_circle(vec2(0.0f, 3.0f), hsv_color(287.0f / 360.0f, 0.7f, 0.9f), 0.5f, identity<mat2>(), true);
 
-            vec2 origin = vec2(16.0f, 16.0f);
+            vec2 origin = vec2(0.0f, 16.0f);
             float sep = 0.25f;
-            uint32_t square_size = 4;
+            uint32_t square_size = 6;
             mat2 ori = glm::rotate(float(M_PI * 0.33333f), vec3(0.0f, 0.0f, 1.0f));
 
             //
-            vec2 size = vec2(1.5f);
+            vec2 size = vec2(1.0f);
             std::vector<vec2> origins = {
-                    vec2(-1, -2),
-                    vec2(1, -2),
+                vec2(-2, 0),
+                vec2(-1, 0),
+                vec2(0, 0),
+                vec2(1, 0),
+                vec2(2, 0),
 
-                    vec2(-1, -1),
-                    vec2(0, -1),
-                    vec2(1, -1),
+                //
 
-                    vec2(-2, 0),
-                    vec2(-1, 0),
-                    vec2(0, 0),
-                    vec2(1, 0),
-                    vec2(2, 0),
-
-                    vec2(0, 1),
-
-                    vec2(0, 2),
+                vec2(0, -2),
+                vec2(0, -1),
+                vec2(0, 1),
+                vec2(0, 2),
             };
 
-            insert_shape(origin, size, origins, hsv_color(0.5f / 6.0f, 0.7f, 0.9f), ori);
+            std::vector<vec2> new_origins;
+            for(vec2 v : origins) {
+                vec2 o = v * 4.0f - 2.0f;
 
-            /*for(int y = 0; y < square_size; ++y) {
-                for (int x = 0; x < square_size * 2; ++x) {
+                for(int x = 0; x <= 3; ++x) {
+                    for (int y = 0; y <= 3; ++y) {
+                        new_origins.push_back(o + vec2(x, y));
+                    }
+                }
+            }
+
+            origins = new_origins;
+
+            uint32_t shape = insert_shape(origin, size, origins, hsv_color(0.5f / 6.0f, 0.7f, 0.9f), ori);
+
+            Constraint constraint;
+            pos_constraint pc;
+            pc.a = vec2(0.0f, 0.0f);
+            pc.b = origin;
+            pc.vs = {vec2(1.0f, 0.0f), vec2(0.0f, 1.0f)};
+            constraint.a = shape;
+            constraint.b = NULL_ENTITY;
+            constraint.pos.push_back(pc);
+
+            physics_system.constraints.push_back(constraint);
+
+            /*
+
+            for(int y = 0; y < square_size; ++y) {
+                for (int x = 0; x < square_size; ++x) {
                     vec2 s = vec2(float(x) - square_size * 0.5f, float(y) - square_size * 0.5f) * (1.0f + sep);
 
                     s = ori * s;
 
-                    insert_square(origin + s, hsv_color(0.5f / 6.0f, 0.7f, 0.9f), vec2(1.0f), ori);
+                    insert_square(origin + s, hsv_color(core.random() , 0.7f, 0.9f), vec2(1.0f), ori);
                 }
-            }*/
+            }
 
             vec3 color = hsv_color(0.5f / 6.0f, 0.7f, 0.9f);
+
+            */
 
             //chain
 

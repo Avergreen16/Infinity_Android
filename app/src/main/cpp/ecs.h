@@ -113,12 +113,16 @@ struct Component_manager {
     template<typename Type>
     void register_component() {
         std::string ti = typeid(Type).name();
-        uint32_t i = id_to_name.size();
-        
-        id_to_name.emplace(i, ti);
-        name_to_id.emplace(ti, i);
-        
-        component_lists.emplace(ti, std::shared_ptr<Component_list<Type>>(new Component_list<Type>));
+
+        if(name_to_id.find(ti) == name_to_id.end()) {
+            uint32_t i = id_to_name.size();
+
+            id_to_name.emplace(i, ti);
+            name_to_id.emplace(ti, i);
+
+            component_lists.emplace(ti, std::shared_ptr<Component_list<Type>>(
+                    new Component_list<Type>));
+        }
     }
     
     template<typename Type>
@@ -219,82 +223,22 @@ struct Coordinator {
     }    
     
     template<typename Type>
-    std::bitset<MAX_COMPONENTS> update_signature() {
-        std::string name = typeid(Type).name();
-        return Signature(1) << component_manager.name_to_id[name];
-    }
+    std::bitset<MAX_COMPONENTS> update_signature();
     
     template<typename Type>
-    void update_signature(std::bitset<MAX_COMPONENTS>& a) {
-        std::string name = typeid(Type).name();
-        a |= Signature(1) << component_manager.name_to_id[name];
-    }
+    void update_signature(std::bitset<MAX_COMPONENTS>& a);
 
     template<typename Type>
-    bool has_component(uint32_t entity) {
-        return (entity_manager.signatures[entity] & update_signature<Type>()) != Signature(0);
-    }
+    bool has_component(uint32_t entity);
 
     template<typename Type>
-    Type& get_component(uint32_t entity) {
-        return component_manager.get_component<Type>(entity);
-    }
+    Type& get_component(uint32_t entity);
     
     template<typename Type>
-    void insert_component(uint32_t entity, Type component) { 
-        component_manager.insert_component(entity, entity_manager.signatures[entity], component);
-        Signature new_signature = entity_manager.signatures[entity];
-        
-        for(auto& s : system_manager.systems) {
-            bool remove = false;
-            for(Collector& c : s.second->collectors) {
-                if(!remove) {
-                    Signature s_signature = c.signature;
-                    if((new_signature & s_signature) == s_signature) {
-                        if(c.greedy) remove = true;
-                        if(c.entities.find(entity) == c.entities.end()) {
-                            c.entities.emplace(entity);
-                        }
-                    }
-                } else {
-                    Signature s_signature = c.signature;
-                    if((new_signature & s_signature) == s_signature) {
-                        if(c.entities.find(entity) != c.entities.end()) {
-                            c.entities.erase(entity);
-                        }
-                    }
-                }
-            }
-        }
-    }
+    void insert_component(uint32_t entity, Type component);
 
     template<typename Type>
-    void insert_component_move(uint32_t entity, Type&& component) { 
-        component_manager.insert_component_move(entity, entity_manager.signatures[entity], std::move(component));
-        Signature new_signature = entity_manager.signatures[entity];
-        
-        for(auto& s : system_manager.systems) {
-            bool remove = false;
-            for(Collector& c : s.second->collectors) {
-                if(!remove) {
-                    Signature s_signature = c.signature;
-                    if((new_signature & s_signature) == s_signature) {
-                        if(c.greedy) remove = true;
-                        if(c.entities.find(entity) == c.entities.end()) {
-                            c.entities.emplace(entity);
-                        }
-                    }
-                } else {
-                    Signature s_signature = c.signature;
-                    if((new_signature & s_signature) == s_signature) {
-                        if(c.entities.find(entity) != c.entities.end()) {
-                            c.entities.erase(entity);
-                        }
-                    }
-                }
-            }
-        }
-    }
+    void insert_component_move(uint32_t entity, Type&& component);
     
     void erase_entity(uint32_t entity) {
         Signature entity_signature = entity_manager.signatures[entity];
@@ -322,3 +266,94 @@ struct Coordinator {
 };
 
 extern Coordinator ecs;
+
+template<typename Type>
+std::bitset<MAX_COMPONENTS> Coordinator::update_signature() {
+    register_component<Type>();
+
+    std::string name = typeid(Type).name();
+    return Signature(1) << component_manager.name_to_id[name];
+}
+
+template<typename Type>
+void Coordinator::update_signature(std::bitset<MAX_COMPONENTS>& a) {
+    register_component<Type>();
+
+    std::string name = typeid(Type).name();
+    a |= Signature(1) << component_manager.name_to_id[name];
+}
+
+template<typename Type>
+bool Coordinator::has_component(uint32_t entity) {
+    register_component<Type>();
+
+    return (entity_manager.signatures[entity] & update_signature<Type>()) != Signature(0);
+}
+
+template<typename Type>
+Type& Coordinator::get_component(uint32_t entity) {
+    register_component<Type>();
+
+    return component_manager.get_component<Type>(entity);
+}
+
+template<typename Type>
+void Coordinator::insert_component(uint32_t entity, Type component) {
+    register_component<Type>();
+
+    component_manager.insert_component(entity, entity_manager.signatures[entity], component);
+    Signature new_signature = entity_manager.signatures[entity];
+
+    for(auto& s : system_manager.systems) {
+        bool remove = false;
+        for(Collector& c : s.second->collectors) {
+            if(!remove) {
+                Signature s_signature = c.signature;
+                if((new_signature & s_signature) == s_signature) {
+                    if(c.greedy) remove = true;
+                    if(c.entities.find(entity) == c.entities.end()) {
+                        c.entities.emplace(entity);
+                    }
+                }
+            } else {
+                Signature s_signature = c.signature;
+                if((new_signature & s_signature) == s_signature) {
+                    if(c.entities.find(entity) != c.entities.end()) {
+                        c.entities.erase(entity);
+                    }
+                }
+            }
+        }
+    }
+}
+
+template<typename Type>
+void Coordinator::insert_component_move(uint32_t entity, Type&& component) {
+    register_component<Type>();
+
+    component_manager.insert_component_move(entity, entity_manager.signatures[entity], std::move(component));
+    Signature new_signature = entity_manager.signatures[entity];
+
+    for(auto& s : system_manager.systems) {
+        bool remove = false;
+        for(Collector& c : s.second->collectors) {
+            if(!remove) {
+                Signature s_signature = c.signature;
+                if((new_signature & s_signature) == s_signature) {
+                    if(c.greedy) remove = true;
+                    if(c.entities.find(entity) == c.entities.end()) {
+                        c.entities.emplace(entity);
+                    }
+                }
+            } else {
+                Signature s_signature = c.signature;
+                if((new_signature & s_signature) == s_signature) {
+                    if(c.entities.find(entity) != c.entities.end()) {
+                        c.entities.erase(entity);
+                    }
+                }
+            }
+        }
+    }
+}
+

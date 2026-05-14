@@ -65,8 +65,29 @@ struct Collider {
 
     void create_bounding_box();
     void create_BVH();
-    std::vector<uint32_t> traverse_BVH(Transform2D& ta, Transform2D& tb, Bounding_box& bb);
-    std::vector<uint64_t> traverse_BVH(Transform2D& ta, Transform2D& tb, Collider& cb);
+};
+
+struct Soft_body_point {
+    vec2 position;
+    vec2 velocity;
+    float mass;
+};
+
+struct Soft_body {
+    Bounding_box bounding_box;
+    std::vector<BVH_node> BVH;
+
+    std::vector<vec2> targets;
+    vec2 target_center;
+    mat2 target_ori;
+
+    std::vector<Soft_body_point> points;
+
+    std::set<uint32_t> non_colliding;
+    bool allow_gravity = true;
+
+    void create_BVH();
+    void create(std::vector<vec2> vs, vec2 pos, float mass);
 };
 
 struct Collision_data {
@@ -141,8 +162,10 @@ struct Collision_constraint {
     uint32_t b;
 
     Collider* ca;
+    Soft_body* sa;
     Transform2D* ta;
     Collider* cb;
+    Soft_body* sb;
     Transform2D* tb;
 
     std::vector<col_constraint> constraints;
@@ -224,7 +247,7 @@ struct Collision_input {
 };
 
 struct input_data {
-    Collider* collider;
+    Bounding_box bounding_box;
     Transform2D* transform;
     uint32_t id;
 };
@@ -244,7 +267,7 @@ struct Physics_system : System {
     uint32_t velocity_iterations = 5;
     uint32_t position_iterations = 0;
     uint32_t substeps = 8;
-    float contact_sep = 0.005f;
+    float contact_sep = 0.02f;
     float static_dist = 0.0625f;
     float penetration_threshold = FLT_MAX;
     uint32_t iteration_threshold = 3;
@@ -279,6 +302,9 @@ struct Physics_system : System {
     static Bounding_box transform(Transform2D& t, Bounding_box& b);
     static bool collision(Transform2D& ta, Bounding_box& a, Transform2D& tb, Bounding_box& b);
     static bool collision(Bounding_box& a, Bounding_box& b);
+
+    static std::vector<uint32_t> traverse_BVH(Transform2D& ta, std::vector<BVH_node>& ca, Transform2D& tb, Bounding_box& bb);
+    static std::vector<uint64_t> traverse_BVH(Transform2D& ta, std::vector<BVH_node>& ca, Transform2D& tb, std::vector<BVH_node>& cb);
 
     //
 

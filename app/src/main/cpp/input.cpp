@@ -23,9 +23,9 @@ void Input_system::init() {
 }
 
 void Input_system::call() {
-    GUI_system& gui_system = ecs.get_system<GUI_system>();
-    Physics_system& physics_system = ecs.get_system<Physics_system>();
-    Renderer& renderer = ecs.get_system<Renderer>();
+    GUI_system &gui_system = ecs.get_system<GUI_system>();
+    Physics_system &physics_system = ecs.get_system<Physics_system>();
+    Renderer &renderer = ecs.get_system<Renderer>();
 
     int width, height;
     eglQuerySurface(renderer.display, renderer.surface, EGL_WIDTH, &width);
@@ -33,11 +33,11 @@ void Input_system::call() {
     int min_dimension = min(width, height);
 
     vec2 ratio;
-    if(width > height) ratio = vec2(1.0f, float(height) / width);
+    if (width > height) ratio = vec2(1.0f, float(height) / width);
     else ratio = vec2(float(width) / height, 1.0f);
 
-    Transform2D& camera_transform = ecs.get_component<Transform2D>(renderer.camera);
-    Camera2D& camera_camera = ecs.get_component<Camera2D>(renderer.camera);
+    Transform2D &camera_transform = ecs.get_component<Transform2D>(renderer.camera);
+    Camera2D &camera_camera = ecs.get_component<Camera2D>(renderer.camera);
 
     /*
 
@@ -115,12 +115,13 @@ void Input_system::call() {
 
         camera_transform.position += pos;
     }
- */
+     */
 
-    for(auto& [id, pointer] : pointers) {
+
+    for (auto &[id, pointer]: pointers) {
         pointer.prev_pos = pointer.pos;
 
-        if(pointer.down == 0) {
+        if (pointer.down == 0) {
             /*
             if(pointers.size() == 1 && held_pointer == 0xFFFFFFFF) {
                 vec2 world_pos = camera_transform.orientation * (((pointer.pos / vec2(width, height) * 2.0f - 1.0f)) * ratio / camera_camera.scale) + camera_transform.position;
@@ -155,7 +156,7 @@ void Input_system::call() {
             */
 
             pointer.down = 1;
-        } else if(pointer.down == 1) {
+        } else if (pointer.down == 1) {
             pointer.down = 2;
         }
     }
@@ -175,28 +176,39 @@ void Input_system::call() {
     }
     */
 
-    vec2 center = vec2(width - float(min_dimension) / 8.0f * 1.125f, float(min_dimension) / 8.0f * 1.125f);
+    bool do_jump = false;
+    bool do_jump_cooldown = false;
+    float do_jump_value = 0.0f;
+
+    vec2 center = vec2(width - float(min_dimension) / 8.0f * 1.5f,
+                       float(min_dimension) / 8.0f * 1.5f);
     float radius = float(min_dimension) / 8.0f * 0.625f;
 
-    if(jump_pointer != 0xFFFFFFFF) {
-        if(pointers.find(jump_pointer) == pointers.end()) {
+    if (jump_pointer != 0xFFFFFFFF) {
+        if (pointers.find(jump_pointer) == pointers.end()) {
             jump_pointer = 0xFFFFFFFF;
-            if(jump != 0.0f) {
+            if (jump != 0.0f) {
+                do_jump = true;
+                do_jump_cooldown = true;
+                do_jump = clamp(jump, 0.0f, 1.0f);
+
                 jump = min(jump, 1.0f);
             }
         } else {
             jump += core.delta_time / jump_charge;
         }
     } else {
-        if(jump > 0.0f) {
+        if (jump > 0.0f) {
             jump -= core.delta_time / jump_cooldown;
+
+            do_jump_cooldown = true;
         } else jump = 0.0f;
     }
 
-    if(jump == 0.0f) {
-        if(pointers.size() && jump_pointer == 0xFFFFFFFF) {
-            for(auto &[id, p]: pointers) {
-                if(p.down == 1) {
+    if (jump == 0.0f) {
+        if (pointers.size() && jump_pointer == 0xFFFFFFFF) {
+            for (auto &[id, p]: pointers) {
+                if (p.down == 1) {
                     if (length(p.pos - center) < radius) {
                         jump_pointer = id;
                     }
@@ -214,35 +226,35 @@ void Input_system::call() {
 
     joystick = vec2(0.0f);
 
-    if(joystick_pointer != 0xFFFFFFFF) {
-        if(pointers.find(joystick_pointer) == pointers.end()) {
+    if (joystick_pointer != 0xFFFFFFFF) {
+        if (pointers.find(joystick_pointer) == pointers.end()) {
             joystick_pointer = 0xFFFFFFFF;
         } else {
-            Pointer& p = pointers[joystick_pointer];
+            Pointer &p = pointers[joystick_pointer];
 
             vec2 rel_pos = p.pos - center;
             rel_pos /= radius;
 
-            if(length(rel_pos) > 1.0f) rel_pos = normalize(rel_pos);
+            if (length(rel_pos) > 1.0f) rel_pos = normalize(rel_pos);
 
             joystick = rel_pos;
         }
     }
 
-    if(pointers.size() && joystick_pointer == 0xFFFFFFFF) {
-        for(auto& [id, p]: pointers) {
-            if(p.down == 1) {
-                if(length(p.pos - center) < radius) {
+    if (pointers.size() && joystick_pointer == 0xFFFFFFFF) {
+        for (auto &[id, p]: pointers) {
+            if (p.down == 1) {
+                if (length(p.pos - center) < radius) {
                     joystick_pointer = id;
                 }
             }
         }
     }
 
-    Collider& player_collider = ecs.get_component<Collider>(player_entity);
-    Transform2D& player_transform = ecs.get_component<Transform2D>(player_entity);
+    Collider &player_collider = ecs.get_component<Collider>(player_entity);
+    Transform2D &player_transform = ecs.get_component<Transform2D>(player_entity);
 
-    Physics_system& ps = ecs.get_system<Physics_system>();
+    Physics_system &ps = ecs.get_system<Physics_system>();
 
     // stick
 
@@ -259,25 +271,27 @@ void Input_system::call() {
 
     std::vector<ppoint> points;
 
-    std::vector<Collision_data> collisions = ps.collide(player_transform, {vec2(0.0f)}, 0.5625);
+    float rad = player_collider.shapes[0].radius.x;
+
+    std::vector<Collision_data> collisions = ps.collide(player_transform, {vec2(0.0f)}, rad * 1.125f);
 
     slime_constraints.clear();
     std::vector<vec2> ns;
 
-    Renderer& r = ecs.get_system<Renderer>();
+    Renderer &r = ecs.get_system<Renderer>();
     r.points.clear();
     r.normals.clear();
     r.cs.clear();
 
-    for(Collision_data& d : collisions) {
-        vec2 va = normalize(d.pb) * 0.5f;
+    for (Collision_data &d: collisions) {
+        vec2 va = normalize(d.pb) * rad;
         vec2 vb = d.pa;
 
         bool insert = true;
 
         vec2 global_vb = vb;
-        if(d.a != 0xFFFFFFFF) {
-            Transform2D& tf = ecs.get_component<Transform2D>(d.a);
+        if (d.a != 0xFFFFFFFF) {
+            Transform2D &tf = ecs.get_component<Transform2D>(d.a);
 
             global_vb = tf.orientation * vb + tf.position;
         }
@@ -289,10 +303,10 @@ void Input_system::call() {
 
         uint32_t ii = 0;
 
-        for(ppoint& pp : points) {
-            if(pp.i == d.a) {
-                if(length(pp.rel - rel_vb) < 0.0625f) {
-                    if(dot(normalize(pp.rel), pp.normal) < dot(normalize(rel_vb), d.normal)) {
+        for (ppoint &pp: points) {
+            if (pp.i == d.a) {
+                if (length(pp.rel - rel_vb) < 0.0625f) {
+                    if (dot(normalize(pp.rel), pp.normal) < dot(normalize(rel_vb), d.normal)) {
                         //r.cs[pp.n] = vec3(1.0f, 0.0f, 0.0f);
                         pp.pb = vb;
                         pp.pa = va;
@@ -300,9 +314,9 @@ void Input_system::call() {
                         pp.rel = rel_vb;
                         pp.n = ii;
 
-                        //r.cs.push_back(vec3(0.0f, 1.0f, 0.0f));
+                        r.cs.push_back(vec3(0.0f, 1.0f, 0.0f));
                     } else {
-                        //r.cs.push_back(vec3(1.0f, 0.0f, 0.0f));
+                        r.cs.push_back(vec3(1.0f, 0.0f, 0.0f));
                     }
 
                     insert = false;
@@ -310,13 +324,13 @@ void Input_system::call() {
                 } else {
                     float da = dot(rel_vb - pp.rel, pp.normal);
                     float db = dot(pp.rel - rel_vb, d.normal);
-                    if(da >= -0.0001f && length(pp.rel) < length(rel_vb)) {
+                    if (da >= -0.0001f && length(pp.rel) < length(rel_vb)) {
                         insert = false;
 
-                        //r.cs.push_back(vec3(0.0f, 0.0f, 1.0f));
+                        r.cs.push_back(vec3(0.0f, 0.0f, 1.0f));
 
                         break;
-                    } else if(db >= -0.0001f && length(pp.rel) > length(rel_vb)) {
+                    } else if (db >= -0.0001f && length(pp.rel) > length(rel_vb)) {
                         //r.cs[pp.n] = vec3(0.0f, 0.0f, 1.0f);
                         pp.pb = vb;
                         pp.pa = va;
@@ -324,7 +338,7 @@ void Input_system::call() {
                         pp.rel = rel_vb;
                         pp.n = ii;
 
-                        //r.cs.push_back(vec3(0.0f, 1.0f, 0.0f));
+                        r.cs.push_back(vec3(0.0f, 1.0f, 0.0f));
 
                         insert = false;
                         break;
@@ -335,7 +349,7 @@ void Input_system::call() {
             ++ii;
         }
 
-        if(insert) {
+        if (insert) {
             ppoint new_pp;
             new_pp.n = points.size();
             new_pp.pa = va;
@@ -348,17 +362,19 @@ void Input_system::call() {
 
             points.push_back(new_pp);
 
-            //r.cs.push_back(vec3(0.0f, 1.0f, 0.0f));
+            r.cs.push_back(vec3(0.0f, 1.0f, 0.0f));
         }
 
-        //r.points.push_back(va + player_transform.position);
+        //r.points.push_back(player_transform.orientation * va + player_transform.position);
         //r.normals.push_back(d.normal);
-        //r.cs.push_back(vec3(1.0f, 1.0f, 0.25f));
+        r.cs.push_back(vec3(1.0f, 1.0f, 0.25f));
     }
 
     //LOGD("%i, %i", points.size(), collisions.size());
 
-    for(ppoint pp : points) {
+    bool move = length(joystick) != 0.0f;
+
+    for (ppoint pp: points) {
         //r.points.push_back(pp.rel + player_transform.position);
         //r.normals.push_back(pp.normal);
         //r.cs.push_back(true);
@@ -368,14 +384,30 @@ void Input_system::call() {
         constraint.a = player_entity;
         constraint.b = pp.i;
 
+
         pos_constraint c;
         c.a = pp.pa;
         c.b = pp.pb;
-        c.vs = {normalize(pp.normal)};
+        if(move && jump == 0.0f) c.vs = {normalize(pp.normal)};
+        else {
+            c.vs = {normalize(pp.normal), normalize(vec2(-pp.normal.y, pp.normal.x))};
+
+            rot_constraint r;
+            r.a = transpose(player_transform.orientation) * vec2(0.0f, 1.0f);
+            if(pp.i == NULL_ENTITY) {
+                r.b = vec2(0.0f, 1.0f);
+            } else {
+                Transform2D& ta = ecs.get_component<Transform2D>(pp.i);
+                r.b = transpose(ta.orientation) * vec2(0.0f, 1.0f);
+            }
+
+            constraint.rot = {r};
+        }
+
         //c.vs = {normalize(vec2(0.0f, 1.0f))};
 
 
-        c.limit = 0.75f;
+        c.limit = 3.0f;
 
         constraint.pos = {c};
         ns.push_back(normalize(pp.normal));
@@ -389,26 +421,67 @@ void Input_system::call() {
 
     // movement
     vec2 up = vec2(0.0f, 1.0f);
-    float mm = FLT_MAX;
-    for(vec2 n : ns) {
-        float m = abs(dot(n, joystick));
 
-        if(mm > m) {
-            up = n;
-            mm = m;
+    if (move) {
+        float mm = FLT_MAX;
+        uint32_t i = 0;
+        uint32_t id = 0xFFFFFFFF;
+        for (vec2 n: ns) {
+            float m = abs(dot(n, joystick));
+
+            if (mm > m) {
+                up = n;
+                mm = m;
+
+                id = i;
+            }
+            ++i;
+        }
+
+        if (id != 0xFFFFFFFF) {
+            slime_constraints = {slime_constraints[id]};
         }
     }
 
-    vec2 target_velocity = joystick;
-    target_velocity *= 6.0f;
+    player_collider.angular_velocity = 0.0f;
 
-    vec2 diff = target_velocity - player_collider.velocity;
-    diff = diff - up * dot(up, diff);
+    if(!do_jump_cooldown && collisions.size() && move) {
+        vec2 target_velocity = joystick;
+        if (jump != 0.0f) target_velocity = vec2(0.0f);
 
-    vec2 delta = diff;
-    if(length(delta) > core.delta_time * 10000.0f) delta *= core.delta_time * 10000.0f / length(delta);
+        target_velocity *= 8.0f;
 
-    player_collider.velocity += delta;
+        if(slime_constraints.size()) {
+            if(!(slime_constraints[0].b == NULL_ENTITY)) {
+                Transform2D& ta = ecs.get_component<Transform2D>(slime_constraints[0].b);
+                Collider& ca = ecs.get_component<Collider>(slime_constraints[0].b);
+
+                vec2 vp = ta.orientation * slime_constraints[0].pos[0].b;
+
+                vec2 add_v = Physics_system::calculate_point_velocity(&ca, vp);
+                target_velocity += add_v;
+            }
+        }
+
+        vec2 diff = target_velocity - player_collider.velocity;
+        diff = diff - up * dot(up, diff);
+
+        vec2 delta = diff;
+        if (length(delta) > core.delta_time * 10000.0f) delta *= core.delta_time * 10000.0f /
+                                                                 length(delta);
+
+        player_collider.velocity += delta;
+    }
+
+    //
+
+    if(do_jump && length(joystick) != 0.0f) {
+        slime_constraints.clear();
+
+        player_collider.velocity += normalize(joystick) * 16.0f;
+    }
+
+    if(do_jump_cooldown) slime_constraints.clear();
 }
 
 

@@ -61,6 +61,8 @@ struct Renderer : System {
     std::vector<vec2> normals;
     std::vector<vec3> cs;
 
+    ivec2 screen_size;
+
     void init();
 
     void call();
@@ -73,9 +75,13 @@ struct Renderer : System {
 
     void render_mesh(uint32_t entity);
 
+    void render_soft_body(uint32_t entity);
+
     void render_sprite(uint32_t entity);
 
     void render_buttons();
 
     void render_points();
+
+    void render_slime(uint32_t entity);
 };
