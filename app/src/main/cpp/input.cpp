@@ -279,9 +279,9 @@ void Input_system::call() {
     std::vector<vec2> ns;
 
     Renderer &r = ecs.get_system<Renderer>();
-    r.points.clear();
-    r.normals.clear();
-    r.cs.clear();
+    //r.points.clear();
+    //r.normals.clear();
+    //r.cs.clear();
 
     for (Collision_data &d: collisions) {
         vec2 va = normalize(d.pb) * rad;

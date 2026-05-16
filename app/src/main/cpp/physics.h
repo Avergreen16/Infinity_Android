@@ -88,7 +88,10 @@ struct Soft_body {
 
     void create_BVH();
     void create(std::vector<vec2> vs, vec2 pos, float mass);
+    void compute_match();
 };
+
+//
 
 struct Collision_data {
     bool collide = false;
@@ -107,30 +110,6 @@ struct Collision_data {
     float deltaT = 0.0f;
     float deltaN = 0.0f;
     float sumN = 0.0f;
-};
-
-struct Constraint_distance {
-    uint32_t a = NULL_ENTITY;
-    uint32_t b = NULL_ENTITY;
-
-    vec2 pa;
-    vec2 pb;
-
-    vec2 pos_a;
-    vec2 pos_b;
-
-    Collider* ca;
-    Transform2D* ta;
-    Collider* cb;
-    Transform2D* tb;
-
-    vec2 jacobian;
-    float lambda;
-    float inertia;
-    float baumgarte;
-
-    void get_points();
-    void get_values();
 };
 
 struct col_constraint {
@@ -175,6 +154,91 @@ struct Collision_constraint {
 
     void refresh(col_constraint& c);
     void refresh_C(col_constraint& c);
+};
+
+//
+
+struct RS_Collision_data {
+    bool collide = false;
+
+    uint32_t a;
+    uint32_t b;
+
+    vec2 pa;
+
+    uint32_t pb0;
+    uint32_t pb1;
+    float blend;
+
+    vec2 normal;
+};
+
+struct RS_col_constraint {
+    RS_Collision_data* d;
+
+    vec2 pa;
+    vec2 pb;
+
+    uint32_t ib0;
+    uint32_t ib1;
+    float blend;
+
+    vec2 normal;
+    vec2 tangent;
+
+    float lambdaN = 0.0f;
+    float lambdaT = 0.0f;
+
+    float pos_lambdaN = 0.0f;
+
+    float inertiaNa = 0.0f;
+    float inertiaNb = 0.0f;
+
+    float inertiaTa = 0.0f;
+    float inertiaTb = 0.0f;
+
+    float baumgarteN;
+    float baumgarteT;
+};
+
+struct RS_Collision_constraint {
+    uint32_t a;
+    uint32_t b;
+
+    Collider* ca;
+    Transform2D* ta;
+    Soft_body* sb;
+
+    std::vector<RS_col_constraint> constraints;
+
+    void get_points();
+    void get_value();
+};
+
+//
+
+struct Constraint_distance {
+    uint32_t a = NULL_ENTITY;
+    uint32_t b = NULL_ENTITY;
+
+    vec2 pa;
+    vec2 pb;
+
+    vec2 pos_a;
+    vec2 pos_b;
+
+    Collider* ca;
+    Transform2D* ta;
+    Collider* cb;
+    Transform2D* tb;
+
+    vec2 jacobian;
+    float lambda;
+    float inertia;
+    float baumgarte;
+
+    void get_points();
+    void get_values();
 };
 
 struct pos_constraint {
@@ -246,6 +310,15 @@ struct Collision_input {
     Transform2D* tb;
 };
 
+struct RS_Collision_input {
+    uint32_t a;
+    uint32_t b;
+
+    Collider* ca;
+    Transform2D* ta;
+    Soft_body* sb;
+};
+
 struct input_data {
     Bounding_box bounding_box;
     Transform2D* transform;
@@ -258,6 +331,9 @@ struct Return_tag {
     ivec2 va[2];
     ivec2 vb[2];
 };
+
+extern Transform2D null_transform;
+extern uint32_t depth;
 
 struct Physics_system : System {
     bool sim_active = false;
@@ -284,9 +360,12 @@ struct Physics_system : System {
     float physics_time = 0.0f;
 
     std::unordered_map<uint64_t, std::vector<Collision_data>> collision_table;
+    std::unordered_map<uint64_t, std::vector<RS_Collision_data>> RS_collision_table;
 
     std::vector<Constraint> constraints;
     std::vector<Constraint_distance> constraints_distance;
+    std::vector<Collision_constraint> collision_constraints;
+    std::vector<RS_Collision_constraint> RS_collision_constraints;
 
     vec2 gravity_aspect = vec2(1.0f, 1.0f);
 
@@ -297,6 +376,7 @@ struct Physics_system : System {
 
     //static std::vector<std::vector<Collision_data>> collision(std::vector<Collision_input>& input);
     static std::vector<Collision_data> collision(Collision_input& input);
+    static std::vector<RS_Collision_data> collision(RS_Collision_input& input);
     static std::vector<Collision_data> collision(Transform2D& ta, Collision_shape& ca, Transform2D& tb, Collision_shape& cb, Return_tag& tag);
 
     static Bounding_box transform(Transform2D& t, Bounding_box& b);
@@ -316,8 +396,9 @@ struct Physics_system : System {
     static vec2 support_func(std::vector<vec2>& vertices, vec2 radius, vec2 direction, mat2 matrix);
 
     void insert_collision(Collision_data c);
+    void insert_collision(RS_Collision_data c);
 
-    void velocity_solve(std::vector<Collision_constraint>& constraints);
+    void velocity_solve();
 
     static vec2 calculate_inertia(Collision_shape& c);
     static vec2 calculate_inertia(Collider& c);
@@ -325,10 +406,12 @@ struct Physics_system : System {
     std::vector<uint64_t> broad_phase(std::vector<input_data>& input);
 
     static vec2 calculate_point_velocity(Collider* c, vec2 point);
+    static vec2 calculate_point_velocity(Soft_body* c, ivec2 ids, float blend);
 
     static float calculate_inverse_mass(Collider* c, Transform2D* t, vec2 impulse_dir, vec2 point);
 
     static void apply_impulse(Collider* c, vec2 impulse, vec2 point);
+    static void apply_impulse(Soft_body* c, vec2 impulse, ivec2 ids, float blend);
 
     void integrate();
 

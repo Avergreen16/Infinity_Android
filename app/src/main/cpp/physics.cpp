@@ -24,6 +24,7 @@ cyan -> held by cursor
 
 //
 
+Transform2D null_transform = {vec2(0.0f), identity<mat2>()};
 
 Physics_system::Physics_system() {
     Signature s = ecs.update_signature<Collider>();
@@ -31,7 +32,6 @@ Physics_system::Physics_system() {
     collectors.push_back(Collector{s, false});
 
     s = ecs.update_signature<Soft_body>();
-    ecs.update_signature<Transform2D>(s);
     collectors.push_back(Collector{s, false});
 }
 
@@ -447,6 +447,134 @@ std::vector<Collision_data> Physics_system::collision(Collision_input& input) {
     return ret;
 }
 
+std::vector<RS_Collision_data> Physics_system::collision(RS_Collision_input& input) {
+    std::vector<RS_Collision_data> ret;
+
+    Return_tag tag;
+
+    if(input.ca->BVH.size()) {
+        std::vector<uint64_t> pairs = traverse_BVH(*input.ta, input.ca->BVH, null_transform, input.sb->BVH);
+
+        std::vector<Return_tag> tags;
+        std::vector<std::vector<Collision_data>> data;
+
+        for(uint64_t pair : pairs) {
+            uint32_t a = pair & 0xFFFFFFFF;
+            uint32_t b = pair >> 32;
+
+            Collision_shape& sa = input.ca->shapes[a];
+
+            uint32_t b0 = b;
+            uint32_t b1 = (b + 1) % input.sb->points.size();
+            vec2 pb0 = input.sb->points[b0].position;
+            vec2 pb1 = input.sb->points[b1].position;
+
+            Collision_shape shape;
+            shape.vertices = {vec2(0.0f), pb1 - pb0};
+            shape.position = pb0;
+            shape.orientation = identity<mat2>();
+
+            std::vector<Collision_data> r = collision(*input.ta, sa, null_transform, shape, tag);
+
+            std::vector<RS_Collision_data> rs;
+            for(Collision_data& d : r) {
+                RS_Collision_data data;
+
+                data.a = input.a;
+                data.b = input.b;
+                data.pa = d.pa;
+                data.pb0 = b0;
+                data.pb1 = b1;
+
+                vec2 pos = d.pb + input.ta->position;
+                float blend = length(pos - pb0) / length(pb1 - pb0);
+
+                data.blend = blend;
+
+                if(data.blend == 0.0f || data.blend == 1.0f) data.normal = d.normal;
+                else data.normal = vec2(0.0f, 0.0f);
+
+                rs.push_back(data);
+            }
+            ret.insert(ret.end(), rs.begin(), rs.end());
+        }
+    } else {
+        /*
+        std::vector<Return_tag> tags;
+        std::vector<std::vector<Collision_data>> data;
+
+        for(Collision_shape& sa : input.ca->shapes) {
+            std::vector<uint32_t> shapes = traverse_BVH(null_transform, input.sb->BVH, *input.ta, sa.bounding_box);
+
+            for(uint32_t shape : shapes) {
+                Collision_shape& sa = input.ca->shapes[shape];
+
+                uint32_t b0 = shape;
+                uint32_t b1 = (shape + 1) % input.sb->points.size();
+                vec2 pb0 = input.sb->points[b0].position;
+                vec2 pb1 = input.sb->points[b1].position;
+
+                Collision_shape s;
+                s.vertices = {vec2(0.0f), pb1 - pb0};
+                s.position = pb0;
+
+                std::vector<Collision_data> r = collision(*input.ta, sa, null_transform, s, tag);
+
+                std::vector<RS_Collision_data> rs;
+                for(Collision_data& d : r) {
+                    RS_Collision_data data;
+
+                    data.a = input.a;
+                    data.b = input.b;
+                    data.pa = d.pa;
+                    data.pb0 = b0;
+                    data.pb1 = b1;
+
+                    vec2 pos = d.pb + input.ta->position;
+                    float blend = length(pos - pb0) / length(pb1 - pb0);
+
+                    data.blend = blend;
+
+                    rs.push_back(data);
+                }
+                ret.insert(ret.end(), rs.begin(), rs.end());
+            }
+        }
+
+        /*
+
+        // edges
+
+        std::unordered_set<ivec2, Hash_coord> set;
+
+        for(uint32_t i = 0; i < tags.size(); ++i) {
+            Return_tag& tag = tags[i];
+            if(tag.type == COLLISION_TYPE_EDGE) {
+                ret.insert(ret.end(), data[i].begin(), data[i].end());
+
+                set.insert(tag.va[0]);
+                set.insert(tag.va[1]);
+            }
+        }
+
+        // vertices
+
+        for(uint32_t i = 0; i < tags.size(); ++i) {
+            Return_tag& tag = tags[i];
+            if(tag.type == COLLISION_TYPE_VERTEX) {
+                if(set.find(tag.va[0]) == set.end()) {
+                    ret.insert(ret.end(), data[i].begin(), data[i].end());
+
+                    set.insert(tag.va[0]);
+                }
+            }
+        }
+         */
+    }
+
+    return ret;
+}
+
 std::vector<Collision_data> Physics_system::collision(Transform2D& ta, Collision_shape& ca, Transform2D& tb, Collision_shape& cb, Return_tag& tag) {
     std::vector<Collision_data> data;
 
@@ -765,6 +893,31 @@ void Physics_system::insert_collision(Collision_data c) {
     v.push_back(c);
 }
 
+void Physics_system::insert_collision(RS_Collision_data c) {
+    uint64_t a = uint64_t(c.a) | (uint64_t(c.b) << 32);
+
+    if(RS_collision_table.find(a) == RS_collision_table.end()) {
+        RS_collision_table.emplace(a, std::vector<RS_Collision_data>());
+    }
+
+    std::vector<RS_Collision_data>& v = RS_collision_table[a];
+
+    Soft_body sb = ecs.get_component<Soft_body>(c.b);
+    vec2 cpb = sb.points[c.pb0].position * (1.0f - c.blend) + sb.points[c.pb1].position * c.blend;
+
+    for(int i = v.size() - 1; i >= 0; --i) {
+        RS_Collision_data& d = v[i];
+        vec2 dpb = sb.points[d.pb0].position * (1.0f - d.blend) + sb.points[d.pb1].position * d.blend;
+
+        vec2 diff_a = d.pa - c.pa;
+        vec2 diff_b = dpb - cpb;
+
+        if(length(diff_a) < contact_sep && length(diff_b) < contact_sep) return;
+    }
+
+    v.push_back(c);
+}
+
 bool compare_x(Sap_point& a, Sap_point& b) {
     float aa = (a.is_start) ? a.start.x : a.end.x;
     float bb = (b.is_start) ? b.start.x : b.end.x;
@@ -1022,6 +1175,8 @@ void Collider::create_BVH() {
 }
 
 void Soft_body::create_BVH() {
+    BVH.clear();
+
     std::vector<Bounding_box> bbs;
     for(int i = 0; i < points.size(); ++i) {
         auto& pa = points[i];
@@ -1134,6 +1289,8 @@ std::vector<uint32_t> Physics_system::traverse_BVH(Transform2D& ta, std::vector<
     return shapes;
 }
 
+uint32_t depth = 0;
+
 std::vector<uint64_t> Physics_system::traverse_BVH(Transform2D& ta, std::vector<BVH_node>& ca, Transform2D& tb, std::vector<BVH_node>& cb) {
     std::vector<uint64_t> front_buffer = {0};
     std::vector<uint64_t> back_buffer;
@@ -1242,6 +1399,7 @@ void Physics_system::physics_loop() {
     const uint32_t num_threads = 12;
     std::vector<std::thread> threads(num_threads);
     std::vector<std::vector<Collision_data>> cdata(num_threads);
+    std::vector<std::vector<RS_Collision_data>> rs_cdata(num_threads);
     std::vector<std::vector<uint64_t>> threads_collisions(num_threads);
 
     uint32_t num_collisions = 0;
@@ -1267,28 +1425,68 @@ void Physics_system::physics_loop() {
 
             if(cache.size() == N || ii >= threads_collisions[t].size() - 1) {
                 std::vector<Collision_input> inputs;
+                std::vector<RS_Collision_input> rs_inputs;
                 for(int j = 0; j < N; ++j) {
                     if(j < cache.size()) {
                         uint32_t a = cache[j] & NULL_ENTITY;
                         uint32_t b = cache[j] >> 32;
 
-                        Collider& ca = ecs.get_component<Collider>(a);
-                        Transform2D& ta = ecs.get_component<Transform2D>(a);
+                        if(ecs.has_component<Soft_body>(a)) {
+                            if(ecs.has_component<Soft_body>(b)) {
 
-                        Collider& cb = ecs.get_component<Collider>(b);
-                        Transform2D& tb = ecs.get_component<Transform2D>(b);
+                            } else {
+                                Collider& ca = ecs.get_component<Collider>(b);
+                                Transform2D& ta = ecs.get_component<Transform2D>(b);
 
-                        if(ca.non_colliding.find(b) != ca.non_colliding.end() || cb.non_colliding.find(a) != cb.non_colliding.end() ) continue;
+                                Soft_body& sb = ecs.get_component<Soft_body>(a);
 
-                        Collision_input ci;
-                        ci.a = a;
-                        ci.b = b;
-                        ci.ca = &ca;
-                        ci.ta = &ta;
-                        ci.cb = &cb;
-                        ci.tb = &tb;
+                                if(ca.non_colliding.find(b) != ca.non_colliding.end() || sb.non_colliding.find(a) != sb.non_colliding.end() ) continue;
 
-                        inputs.push_back(ci);
+                                RS_Collision_input ci;
+                                ci.a = b;
+                                ci.b = a;
+                                ci.ca = &ca;
+                                ci.ta = &ta;
+                                ci.sb = &sb;
+
+                                rs_inputs.push_back(ci);
+
+                            }
+                        } else if(ecs.has_component<Soft_body>(b)) {
+                            Collider& ca = ecs.get_component<Collider>(a);
+                            Transform2D& ta = ecs.get_component<Transform2D>(a);
+
+                            Soft_body& sb = ecs.get_component<Soft_body>(b);
+
+                            if(ca.non_colliding.find(b) != ca.non_colliding.end() || sb.non_colliding.find(a) != sb.non_colliding.end() ) continue;
+
+                            RS_Collision_input ci;
+                            ci.a = a;
+                            ci.b = b;
+                            ci.ca = &ca;
+                            ci.ta = &ta;
+                            ci.sb = &sb;
+
+                            rs_inputs.push_back(ci);
+                        } else {
+                            Collider& ca = ecs.get_component<Collider>(a);
+                            Transform2D& ta = ecs.get_component<Transform2D>(a);
+
+                            Collider& cb = ecs.get_component<Collider>(b);
+                            Transform2D& tb = ecs.get_component<Transform2D>(b);
+
+                            if(ca.non_colliding.find(b) != ca.non_colliding.end() || cb.non_colliding.find(a) != cb.non_colliding.end() ) continue;
+
+                            Collision_input ci;
+                            ci.a = a;
+                            ci.b = b;
+                            ci.ca = &ca;
+                            ci.ta = &ta;
+                            ci.cb = &cb;
+                            ci.tb = &tb;
+
+                            inputs.push_back(ci);
+                        }
                     }
                 }
 
@@ -1332,6 +1530,30 @@ void Physics_system::physics_loop() {
                     }
                 }
 
+                for(int j = 0; j < rs_inputs.size(); ++j) {
+                    std::vector<RS_Collision_data> cv = collision(rs_inputs[j]);
+
+                    if(cv.size()) {
+                        for(RS_Collision_data& c : cv) {
+                            RS_Collision_input& ci = rs_inputs[j];
+
+                            bool insert = true;
+
+                            if(ci.ca->is_static) {
+                                c.pa = transpose(ci.ta->orientation) * c.pa + ci.ta->position;
+                                c.a = NULL_ENTITY;
+                                c.b = ci.b;
+                            } else {
+                                c.pa = transpose(ci.ta->orientation) * (c.pa);
+                                c.a = ci.a;
+                                c.b = ci.b;
+                            }
+
+                            if(insert) rs_cdata[t].push_back(c);
+                        }
+                    }
+                }
+
                 cache.clear();
             }
         }
@@ -1350,8 +1572,14 @@ void Physics_system::physics_loop() {
             insert_collision(collision_data);
         }
     }
+    for(auto& c : rs_cdata) {
+        for(RS_Collision_data& collision_data : c) {
+            insert_collision(collision_data);
+        }
+    }
 
-    std::vector<Collision_constraint> collision_constraints(collision_table.size());
+    collision_constraints.clear();
+    collision_constraints.resize(collision_table.size());
 
     uint32_t i = 0;
     for(auto& [k, d] : collision_table) {
@@ -1388,6 +1616,55 @@ void Physics_system::physics_loop() {
         ++i;
     }
 
+    //
+
+    RS_collision_constraints.clear();
+    RS_collision_constraints.resize(RS_collision_table.size());
+
+    //
+    Renderer& renderer = ecs.get_system<Renderer>();
+
+    renderer.points.clear();
+    renderer.normals.clear();
+    renderer.cs.clear();
+
+    i = 0;
+    for(auto& [k, d] : RS_collision_table) {
+        RS_Collision_constraint cc;
+        uint32_t a = k & 0xFFFFFFFF;
+        uint32_t b = k >> 32;
+        cc.a = a;
+        cc.b = b;
+
+        if(cc.a != NULL_ENTITY) {
+            cc.ca = &ecs.get_component<Collider>(cc.a);
+            cc.ta = &ecs.get_component<Transform2D>(cc.a);
+            cc.ca->colliding_with.push_back(cc.b);
+            cc.ca->colliding_normal.push_back(d[0].normal);
+        }
+
+        cc.sb = &ecs.get_component<Soft_body>(cc.b);
+
+        //
+
+        for(int i = 0; i < d.size(); ++i) {
+            RS_col_constraint col;
+
+            RS_Collision_data& c = d[i];
+
+            col.d = &c;
+            col.ib0 = c.pb0;
+            col.ib1 = c.pb1;
+            col.blend = c.blend;
+
+            cc.constraints.push_back(col);
+        }
+        RS_collision_constraints[i] = cc;
+        ++i;
+    }
+
+    //
+
     Input_system& is = ecs.get_system<Input_system>();
 
     uint32_t start = constraints.size();
@@ -1396,7 +1673,7 @@ void Physics_system::physics_loop() {
 
     //
     for(int i = 0; i < substeps; ++i) {
-        velocity_solve(collision_constraints);
+        velocity_solve();
 
         integrate();
     }
@@ -1406,6 +1683,7 @@ void Physics_system::physics_loop() {
     // prune
 
     std::vector<uint64_t> remove_table;
+    std::vector<uint64_t> RS_remove_table;
 
     for(Collision_constraint& c : collision_constraints) {
         uint64_t key = uint64_t(c.a) | (uint64_t(c.b) << 32);
@@ -1434,7 +1712,56 @@ void Physics_system::physics_loop() {
         if(d.size() == 0) remove_table.push_back(key);
     }
 
+    for(auto& v : RS_collision_constraints) {
+        for(auto& vv : v.constraints) {
+            renderer.points.push_back(v.sb->points[vv.ib0].position * (1.0f - vv.blend) +
+                                              v.sb->points[vv.ib1].position * vv.blend);
+            renderer.normals.push_back(vv.normal);
+            renderer.cs.push_back(vec3(1.0f, 0.75f, 0.25f));
+        }
+    }
+
+    for(auto& [key, c] : RS_collision_table) {
+        std::vector<uint32_t> n_erase;
+
+        uint32_t a = key & 0xFFFFFFFF;
+        uint32_t b = key >> 32;
+
+        Soft_body& sb = ecs.get_component<Soft_body>(b);
+        Transform2D& ta = ecs.get_component<Transform2D>(a);
+
+        for(auto& cc : c) {
+            vec2 pa = ta.orientation * cc.pa + ta.position;
+            vec2 pb = sb.points[cc.pb0].position * (1.0f - cc.blend) + sb.points[cc.pb1].position * cc.blend;
+            vec2 distance = pa - pb;
+
+            vec2 normal = cc.normal;
+
+            if(length(cc.normal) == 0.0) {
+                normal = sb.points[cc.pb1].position - sb.points[cc.pb0].position;
+                normal = normalize(vec2(normal.y, -normal.x));
+            }
+
+            float dot_normal = dot(distance, normal);
+            float v = length(distance - normal * dot_normal);
+
+            if(dot_normal > contact_sep || v > contact_sep) {
+
+                n_erase.push_back((uint64_t(&cc) - uint64_t(c.data())) / sizeof(RS_Collision_data));
+            }
+        }
+
+        uint32_t i = 0;
+        for(uint32_t n : n_erase) {
+            c.erase(c.begin() + (n - i));
+            ++i;
+        }
+
+        if(c.size() == 0) RS_remove_table.push_back(key);
+    }
+
     for(uint64_t k : remove_table) collision_table.erase(k);
+    for(uint64_t k : RS_remove_table) RS_collision_table.erase(k);
 }
 
 void Physics_system::integrate() {
@@ -1456,6 +1783,20 @@ void Physics_system::integrate() {
                 vec2 g = get_gravity(ta.position) * -20.0f;
 
                 ca.velocity += g * sub_dt;
+            }
+        }
+    }
+
+    for(uint32_t entity : collectors[1].entities) {
+        Soft_body& s = ecs.get_component<Soft_body>(entity);
+
+        for(auto& p : s.points) {
+            p.position += p.velocity * sub_dt;
+
+            if(s.allow_gravity) {
+                vec2 g = get_gravity(p.position) * -20.0f;
+
+                p.velocity += g * sub_dt;
             }
         }
     }
@@ -1488,6 +1829,14 @@ void Physics_system::apply_impulse(Collider* c, vec2 impulse, vec2 point) {
     if(c->allow_rotation) c->angular_velocity += cross(vec3(point, 0.0f), vec3(impulse, 0.0f)).z / c->inertia;
 }
 
+void Physics_system::apply_impulse(Soft_body* c, vec2 impulse, ivec2 ids, float blend) {
+    vec2 i0 = impulse * (1.0f - blend) / c->points[ids.x].mass;
+    vec2 i1 = impulse * blend / c->points[ids.y].mass;
+
+    c->points[ids.x].velocity += i0;
+    c->points[ids.y].velocity += i1;
+}
+
 void Constraint_distance::get_points() {
     pos_a = ta->orientation * pa + ta->position;
 
@@ -1516,7 +1865,7 @@ void Constraint_distance::get_values() {
     baumgarte = -len;
 }
 
-void Physics_system::velocity_solve(std::vector<Collision_constraint>& collisions) {
+void Physics_system::velocity_solve() {
     float spring = 0.45f;
     float softness = 0.05f;
 
@@ -1526,7 +1875,7 @@ void Physics_system::velocity_solve(std::vector<Collision_constraint>& collision
     float factor = 1.0f / (sub_dt) * (sub_dt / physics_step);
     float factor_constraint = 1.0f / (sub_dt) * (sub_dt / physics_step);
 
-    for(Collision_constraint& data : collisions) {
+    for(Collision_constraint& data : collision_constraints) {
         data.get_points();
         data.get_value();
 
@@ -1558,6 +1907,22 @@ void Physics_system::velocity_solve(std::vector<Collision_constraint>& collision
                 apply_impulse(data.cb, -friction_impulse, c.pb - data.tb->position);
             }
         }
+    }
+
+    for(RS_Collision_constraint& data : RS_collision_constraints) {
+        data.get_points();
+        data.get_value();
+
+        for(RS_col_constraint& c : data.constraints) {
+            c.lambdaN = 0.0f;
+            c.lambdaT = 0.0f;
+        }
+    }
+
+    for(uint32_t soft_body : collectors[1].entities) {
+        Soft_body& sb = ecs.get_component<Soft_body>(soft_body);
+
+        sb.compute_match();
     }
 
     for(Constraint& data : constraints) {
@@ -1596,8 +1961,76 @@ void Physics_system::velocity_solve(std::vector<Collision_constraint>& collision
         }
     }
 
+    float soft_body_stiffness = 0.0055f;
+
     for(int i = 0; i < velocity_iterations; ++i) {
-        for(Collision_constraint& data : collisions) {
+        for(uint32_t soft_body : collectors[1].entities) {
+            Soft_body& sb = ecs.get_component<Soft_body>(soft_body);
+
+            for(int j = 0; j < sb.points.size(); ++j) {
+                uint32_t a = j;
+                uint32_t b = (j + 1) % sb.points.size();
+
+                vec2 oa = sb.targets[a];
+                vec2 ob = sb.targets[b];
+
+                auto &pa = sb.points[a];
+                auto &pb = sb.points[b];
+
+                //
+
+                float target_difference = length(oa - ob);
+                float current_difference = length(pa.position - pb.position);
+                vec2 direction = normalize(pa.position - pb.position);
+                vec2 target_position = direction * target_difference;
+
+                //
+
+                float inertia = 1.0f / pa.mass + 1.0f / pb.mass;
+
+                vec2 velocity = pa.velocity - pb.velocity;
+
+                float v = dot(velocity, direction);
+
+                float baumgarte = (current_difference - target_difference) * spring * factor;
+
+                float L = v + baumgarte;
+                L /= inertia;
+
+                vec2 impulse = direction * L * soft_body_stiffness;
+
+                pa.velocity -= impulse / pa.mass;
+                pb.velocity += impulse / pb.mass;
+
+                //
+
+                vec2 match_target = sb.target_ori * oa + sb.target_center;
+                vec2 match_difference = match_target - pa.position;
+                float match_distance = length(match_difference);
+                if(match_distance > 0.0001) {
+                    vec2 match_direction = match_difference / match_distance;
+
+                    //
+
+                    inertia = 1.0f / pa.mass;
+
+                    velocity = pa.velocity;
+
+                    v = dot(velocity, match_direction);
+
+                    baumgarte = match_distance * spring * factor;
+
+                    L = -v + baumgarte;
+                    L /= inertia;
+
+                    impulse = match_direction * L * soft_body_stiffness * 0.5f;
+
+                    pa.velocity += impulse / pa.mass;
+                }
+            }
+        }
+
+        for(Collision_constraint& data : collision_constraints) {
             for(col_constraint& cc : data.constraints) {
 
                 vec2 velocity = calculate_point_velocity(data.ca, cc.pa - data.ta->position);
@@ -1699,6 +2132,120 @@ void Physics_system::velocity_solve(std::vector<Collision_constraint>& collision
                     apply_impulse(data.ca, friction_impulse, cc.pa - data.ta->position);
                     apply_impulse(data.cb, -friction_impulse, cc.pb - data.tb->position);
                 }
+            }
+        }
+
+        for(RS_Collision_constraint& data : RS_collision_constraints) {
+            for(RS_col_constraint& cc : data.constraints) {
+                vec2 velocity = -calculate_point_velocity(data.sb, {cc.ib0, cc.ib1}, cc.blend);
+
+                float diff = (cc.baumgarteN) * spring * factor;
+
+                if(cc.d->a == NULL_ENTITY) {
+                    float inertia = cc.inertiaNb;
+
+                    float v = dot(velocity, cc.normal);
+
+                    float L = -v - diff;
+                    L /= inertia;
+                    L -= softness * cc.lambdaN;
+
+                    vec2 limits = vec2(0.0f, FLT_MAX);
+
+                    float new_lambda = cc.lambdaN + L;
+                    new_lambda = clamp(new_lambda, limits.x, limits.y);
+                    L = new_lambda - cc.lambdaN;
+                    cc.lambdaN = new_lambda;
+
+                    vec2 impulse = cc.normal * L;
+
+                    apply_impulse(data.sb, -impulse, {cc.ib0, cc.ib1}, cc.blend);
+
+                    // friction
+
+                    float normal_magnitude = length(impulse);
+
+                    velocity = -calculate_point_velocity(data.sb, {cc.ib0, cc.ib1}, cc.blend);
+
+                    vec2 tangent_vector = cc.tangent;
+                    float tangent_velocity = dot(velocity, tangent_vector);
+
+                    float inverse_mass = cc.inertiaTb;
+
+                    float mu = 0.9f;
+
+                    float max_friction = abs(mu * cc.lambdaN);
+
+                    float new_lambdaT = cc.lambdaT - tangent_velocity / inverse_mass;
+                    new_lambdaT = clamp(new_lambdaT, -max_friction, max_friction);
+                    L = new_lambdaT - cc.lambdaT;
+                    cc.lambdaT = new_lambdaT;
+
+                    float Pt = L;
+
+                    vec2 friction_impulse = tangent_vector * Pt;
+
+                    apply_impulse(data.sb, -friction_impulse, {cc.ib0, cc.ib1}, cc.blend);
+                } else {
+
+                }
+
+                /*
+                vec2 velocity = calculate_point_velocity(data.ca, cc.pa - data.ta->position);
+
+                float diff = (cc.baumgarteN) * spring * factor;
+
+                if(cc.d->b == NULL_ENTITY) {
+
+                } else {
+                    float inertia = cc.inertiaNa + cc.inertiaNb;
+
+                    velocity -= calculate_point_velocity(data.cb, cc.pb - data.tb->position);
+
+                    float v = dot(velocity, cc.normal);
+
+                    float L = -v - diff;
+                    L /= inertia;
+                    L -= softness * cc.lambdaN;
+
+                    vec2 limits = vec2(0.0f, FLT_MAX);
+
+                    float new_lambda = cc.lambdaN + L;
+                    new_lambda = clamp(new_lambda, limits.x, limits.y);
+                    L = new_lambda - cc.lambdaN;
+                    cc.lambdaN = new_lambda;
+
+                    vec2 impulse = cc.normal * L;
+
+                    apply_impulse(data.ca, impulse, cc.pa - data.ta->position);
+                    apply_impulse(data.cb, -impulse, cc.pb - data.tb->position);
+
+                    // friction
+
+                    float normal_magnitude = length(impulse);
+
+                    velocity = calculate_point_velocity(data.ca, cc.pa - data.ta->position) - calculate_point_velocity(data.cb, cc.pb - data.tb->position);
+                    float tangent_velocity = dot(velocity, cc.tangent);
+
+                    inertia = cc.inertiaTa + cc.inertiaTb;
+
+                    float mu = 0.9f;
+
+                    float max_friction = abs(mu * cc.lambdaN);
+
+                    float new_lambdaT = cc.lambdaT - tangent_velocity / inertia;
+                    new_lambdaT = clamp(new_lambdaT, -max_friction, max_friction);
+                    L = new_lambdaT - cc.lambdaT;
+                    cc.lambdaT = new_lambdaT;
+
+                    float Pt = L;
+
+                    vec2 friction_impulse = cc.tangent * Pt;
+
+                    apply_impulse(data.ca, friction_impulse, cc.pa - data.ta->position);
+                    apply_impulse(data.cb, -friction_impulse, cc.pb - data.tb->position);
+                }
+                 */
             }
         }
 
@@ -1806,7 +2353,7 @@ void Physics_system::velocity_solve(std::vector<Collision_constraint>& collision
         }
     }
 
-    for(Collision_constraint& c : collisions) {
+    for(Collision_constraint& c : collision_constraints) {
         for(col_constraint& cc : c.constraints) {
             cc.d->lambdaN = cc.lambdaN;
             cc.d->lambdaT = cc.lambdaT;
@@ -1906,6 +2453,13 @@ vec2 Physics_system::calculate_point_velocity(Collider* c, vec2 point) {
     velocity += linear_velocity;
 
     return velocity;
+}
+
+vec2 Physics_system::calculate_point_velocity(Soft_body* c, ivec2 ids, float blend) {
+    auto& pa = c->points[ids.x];
+    auto& pb = c->points[ids.y];
+
+    return pa.velocity * (1.0f - blend) + pb.velocity * blend;
 }
 
 float Physics_system::calculate_inverse_mass(Collider* c, Transform2D* t, vec2 impulse_dir, vec2 point) {
@@ -2016,6 +2570,79 @@ void Constraint::refresh(pos_constraint& c) {
     }
 }
 
+
+void RS_Collision_constraint::get_points() {
+    for(RS_col_constraint& c : constraints) {
+        if(c.d->a == NULL_ENTITY) {
+            c.pa = c.d->pa;
+        } else {
+            vec2 point_a = ta->orientation * c.d->pa + ta->position;
+
+            c.pa = point_a;
+        }
+
+        c.pb = sb->points[c.ib0].position * (1.0f - c.blend) + sb->points[c.ib1].position * c.blend;
+    }
+}
+
+void Soft_body::compute_match() {
+    vec2 center = vec2(0.0f);
+    target_center = vec2(0.0f);
+    for(uint32_t i = 0; i < points.size(); ++i) {
+        target_center += points[i].position;
+        center += targets[i];
+    }
+    center /= float(points.size());
+    target_center /= float(points.size());
+
+
+    float s = 0.0f;
+    float c = 0.0f;
+    for(uint32_t i = 0; i < points.size(); ++i) {
+        vec2 target = targets[i];
+        auto& point = points[i];
+
+        target -= center;
+        vec2 p = point.position - target_center;
+
+        c += dot(target, p);
+        s += p.y * target.x - p.x * target.y;
+    }
+
+    s /= float(points.size());
+    c /= float(points.size());
+
+    float angle = atan2(s, c);
+
+    target_ori = glm::rotate(angle, vec3(0.0f, 0.0f, 1.0f));
+}
+
+void RS_Collision_constraint::get_value() {
+    for(RS_col_constraint& c : constraints) {
+        vec2 diff = c.pa - c.pb;
+
+        if(length(c.d->normal) == 0) {
+            c.tangent = normalize(sb->points[c.ib1].position - sb->points[c.ib0].position);
+            c.normal = vec2(c.tangent.y, -c.tangent.x);
+        } else {
+
+            c.tangent = vec2(c.d->normal.y, -c.d->normal.x);
+            c.normal = c.d->normal;
+        }
+
+        if(c.d->a != NULL_ENTITY) {
+            c.inertiaNa = Physics_system::calculate_inverse_mass(ca, ta, c.normal, c.pa - ta->position);
+            c.inertiaTa = Physics_system::calculate_inverse_mass(ca, ta, c.tangent, c.pa - ta->position);
+        }
+
+        float inverse_mass = (1.0f / sb->points[c.ib0].mass * (1.0f - c.blend) + (1.0f / sb->points[c.ib1].mass * c.blend));
+        c.inertiaNb = inverse_mass;
+        c.inertiaTb = inverse_mass;
+
+        c.baumgarteN = dot(diff, c.normal);
+        c.baumgarteT = dot(diff, c.tangent);
+    }
+}
 
 void Constraint::get_points() {
     for(pos_constraint& pc : pos) {

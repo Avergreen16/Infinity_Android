@@ -132,7 +132,19 @@ void android_main(android_app* app) {
     }
 
     Soft_body b;
-    b.create({vec2(-0.5f, -0.5f), vec2(0.5f, -0.5f), vec2(0.5f, 0.5f), vec2(-0.5f, 0.5f)}, vec2(0.0f, 5.0f), 40.0f);
+
+    float num = 24;
+
+    std::vector<vec2> vs;
+
+    for(int i = 0; i < num; ++i) {
+        float angle = float(i) / num * 2 * M_PI;
+
+        vec2 v = vec2(cos(angle), sin(angle)) * 1.5f;
+
+        vs.push_back(v);
+    }
+    b.create(vs, vec2(0.0f, 5.0f), 40.0f);
 
     uint32_t entity = ecs.insert_entity();
     ecs.insert_component(entity, b);
@@ -294,12 +306,19 @@ void android_main(android_app* app) {
             };
 
             for(ivec4 chunk : chunks) {
+                Collision_shape new_cs = cs;
+                for(vec2& v : new_cs.vertices) v = (v + 0.5f) * vec2(chunk.z - chunk.x, chunk.w - chunk.y);
+                new_cs.position = vec2(chunk.x, chunk.y);
+                c.shapes.push_back(new_cs);
+
+                /*
                 for(int x = chunk.x; x < chunk.z; ++x) {
                     for(int y = chunk.y; y < chunk.w; ++y) {
                         cs.position = vec2(x + 0.5f, y + 0.5f);
                         c.shapes.push_back(cs);
                     }
                 }
+                 */
             }
 
             c.is_static = true;
@@ -429,7 +448,7 @@ void android_main(android_app* app) {
                 return entity;
             };
 
-            input_system.player_entity = insert_circle(vec2(0.0f, 3.0f), hsv_color(287.0f / 360.0f, 0.7f, 0.9f), 0.5f, identity<mat2>(), true);
+            input_system.player_entity = insert_circle(vec2(-3.0f, 3.0f), hsv_color(287.0f / 360.0f, 0.7f, 0.9f), 0.5f, identity<mat2>(), true);
 
             vec2 origin = vec2(0.0f, 16.0f);
             float sep = 0.25f;
