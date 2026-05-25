@@ -251,12 +251,17 @@ void Input_system::call() {
         }
     }
 
-    Collider &player_collider = ecs.get_component<Collider>(player_entity);
-    Transform2D &player_transform = ecs.get_component<Transform2D>(player_entity);
+    Soft_body& player_soft_body = ecs.get_component<Soft_body>(player_entity);
+    //Collider &player_collider = ecs.get_component<Collider>(player_entity);
+    //Transform2D &player_transform = ecs.get_component<Transform2D>(player_entity);
 
     Physics_system &ps = ecs.get_system<Physics_system>();
 
     // stick
+    bool move = length(joystick) != 0.0f;
+
+    /*
+
 
     struct ppoint {
         uint32_t i;
@@ -372,8 +377,6 @@ void Input_system::call() {
 
     //LOGD("%i, %i", points.size(), collisions.size());
 
-    bool move = length(joystick) != 0.0f;
-
     for (ppoint pp: points) {
         //r.points.push_back(pp.rel + player_transform.position);
         //r.normals.push_back(pp.normal);
@@ -412,8 +415,10 @@ void Input_system::call() {
         constraint.pos = {c};
         ns.push_back(normalize(pp.normal));
 
-        slime_constraints.push_back(constraint);
+        //slime_constraints.push_back(constraint);
     }
+
+    */
 
     //if(player_collider.colliding_with.size()) player_collider.allow_gravity = false;
     //else player_collider.allow_gravity = true;
@@ -422,6 +427,7 @@ void Input_system::call() {
     // movement
     vec2 up = vec2(0.0f, 1.0f);
 
+    /*
     if (move) {
         float mm = FLT_MAX;
         uint32_t i = 0;
@@ -442,16 +448,22 @@ void Input_system::call() {
             slime_constraints = {slime_constraints[id]};
         }
     }
+     */
 
-    player_collider.angular_velocity = 0.0f;
+    //player_collider.angular_velocity = 0.0f;
 
-    if(!do_jump_cooldown && collisions.size() && move) {
+    {
+        vec2 avg_velocity = vec2(0.0f);
+        for(auto& p : player_soft_body.points) avg_velocity += p.velocity;
+        avg_velocity /= float(player_soft_body.points.size());
+
         vec2 target_velocity = joystick;
-        if (jump != 0.0f) target_velocity = vec2(0.0f);
+        //if (jump != 0.0f) target_velocity = vec2(0.0f);
 
         target_velocity *= 8.0f;
+        target_velocity = vec2(target_velocity.x, 0.0f);
 
-        if(slime_constraints.size()) {
+        /*if(slime_constraints.size()) {
             if(!(slime_constraints[0].b == NULL_ENTITY)) {
                 Transform2D& ta = ecs.get_component<Transform2D>(slime_constraints[0].b);
                 Collider& ca = ecs.get_component<Collider>(slime_constraints[0].b);
@@ -461,16 +473,16 @@ void Input_system::call() {
                 vec2 add_v = Physics_system::calculate_point_velocity(&ca, vp);
                 target_velocity += add_v;
             }
-        }
+        }*/
 
-        vec2 diff = target_velocity - player_collider.velocity;
+        vec2 diff = target_velocity - avg_velocity;
         diff = diff - up * dot(up, diff);
 
         vec2 delta = diff;
-        if (length(delta) > core.delta_time * 10000.0f) delta *= core.delta_time * 10000.0f /
+        if (length(delta) > core.delta_time * 65.0f) delta *= core.delta_time * 65.0f /
                                                                  length(delta);
 
-        player_collider.velocity += delta;
+        for(auto& p : player_soft_body.points) p.velocity += delta;
     }
 
     //
@@ -478,7 +490,7 @@ void Input_system::call() {
     if(do_jump && length(joystick) != 0.0f) {
         slime_constraints.clear();
 
-        player_collider.velocity += normalize(joystick) * 16.0f;
+        //player_collider.velocity += normalize(joystick) * 16.0f;
     }
 
     if(do_jump_cooldown) slime_constraints.clear();

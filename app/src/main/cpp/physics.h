@@ -80,6 +80,11 @@ struct Soft_body {
     std::vector<vec2> targets;
     vec2 target_center;
     mat2 target_ori;
+    float target_area;
+    float current_area;
+    float pressure;
+
+    float inflate = 0.125f;
 
     std::vector<Soft_body_point> points;
 
@@ -169,6 +174,7 @@ struct RS_Collision_data {
     uint32_t pb0;
     uint32_t pb1;
     float blend;
+    vec2 offset;
 
     vec2 normal;
 };
@@ -182,6 +188,7 @@ struct RS_col_constraint {
     uint32_t ib0;
     uint32_t ib1;
     float blend;
+    vec2 offset;
 
     vec2 normal;
     vec2 tangent;

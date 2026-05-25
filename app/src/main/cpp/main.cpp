@@ -39,10 +39,12 @@ void handle_cmd(android_app *app, int32_t cmd) {
             core.shaders.emplace("shape_render", std::shared_ptr<Shader>(new Shader("shaders/shape_render.vert", "shaders/shape_render.frag")));
             core.shaders.emplace("sprite", std::shared_ptr<Shader>(new Shader("shaders/sprite.vert", "shaders/sprite.frag")));
             core.shaders.emplace("slime", std::shared_ptr<Shader>(new Shader("shaders/slime.vert", "shaders/slime.frag")));
+            core.shaders.emplace("texture", std::shared_ptr<Shader>(new Shader("shaders/texture.vert", "shaders/texture.frag")));
 
             core.textures.emplace("grid", std::shared_ptr<Texture>(new Texture("textures/grid.png", {GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE}, 4)));
             core.textures.emplace("text", std::shared_ptr<Texture>(new Texture("textures/text_mono.png", {GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE}, 4)));
             core.textures.emplace("gui", std::shared_ptr<Texture>(new Texture("textures/icons.png", {GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE}, 4)));
+            core.textures.emplace("slime", std::shared_ptr<Texture>(new Texture("textures/slime.png", {GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE}, 4)));
 
             /*
              * when the context got reset, all of the vertex buffers got turned off...
@@ -130,25 +132,6 @@ void android_main(android_app* app) {
 
         ecs.get_system<Level_system>().load_level(0);
     }
-
-    Soft_body b;
-
-    float num = 24;
-
-    std::vector<vec2> vs;
-
-    for(int i = 0; i < num; ++i) {
-        float angle = float(i) / num * 2 * M_PI;
-
-        vec2 v = vec2(cos(angle), sin(angle)) * 1.5f;
-
-        vs.push_back(v);
-    }
-    b.create(vs, vec2(0.0f, 5.0f), 40.0f);
-
-    uint32_t entity = ecs.insert_entity();
-    ecs.insert_component(entity, b);
-
 
     double time = get_time();
     core.start_time = time;
@@ -306,20 +289,44 @@ void android_main(android_app* app) {
             };
 
             for(ivec4 chunk : chunks) {
+                /*
                 Collision_shape new_cs = cs;
                 for(vec2& v : new_cs.vertices) v = (v + 0.5f) * vec2(chunk.z - chunk.x, chunk.w - chunk.y);
                 new_cs.position = vec2(chunk.x, chunk.y);
                 c.shapes.push_back(new_cs);
+                */
 
-                /*
                 for(int x = chunk.x; x < chunk.z; ++x) {
                     for(int y = chunk.y; y < chunk.w; ++y) {
                         cs.position = vec2(x + 0.5f, y + 0.5f);
                         c.shapes.push_back(cs);
                     }
                 }
-                 */
             }
+
+            //
+
+            Soft_body b;
+
+            float num = 16;
+
+            std::vector<vec2> vs;
+
+            for(int i = 0; i < num; ++i) {
+                float angle = float(i) / num * 2 * M_PI;
+
+                vec2 v = vec2(cos(angle), sin(angle)) * (0.75f - b.inflate);
+
+                vs.push_back(v);
+            }
+            b.create(vs, vec2(0.0f, 5.0f), 40.0f);
+
+            uint32_t entity = ecs.insert_entity();
+            ecs.insert_component(entity, b);
+
+            input_system.player_entity = entity;
+
+            //
 
             c.is_static = true;
 
@@ -329,7 +336,8 @@ void android_main(android_app* app) {
             m.color = hsv_color(0.0f, 0.0f, 0.5f);
             create_mesh(m, c);
 
-            uint32_t entity = ecs.insert_entity();
+
+            entity = ecs.insert_entity();
 
             ecs.insert_component(entity, m);
             ecs.insert_component(entity, t);
@@ -448,7 +456,7 @@ void android_main(android_app* app) {
                 return entity;
             };
 
-            input_system.player_entity = insert_circle(vec2(-3.0f, 3.0f), hsv_color(287.0f / 360.0f, 0.7f, 0.9f), 0.5f, identity<mat2>(), true);
+            //input_system.player_entity = insert_circle(vec2(-3.0f, 3.0f), hsv_color(287.0f / 360.0f, 0.7f, 0.9f), 0.5f, identity<mat2>(), true);
 
             vec2 origin = vec2(0.0f, 16.0f);
             float sep = 0.25f;

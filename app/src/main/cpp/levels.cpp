@@ -24,7 +24,7 @@ void Level_system::load_level(uint32_t i) {
 
     camera_transform.position = ivec2(0, (l.range.x + l.range.y) * 0.5f);
 
-    camera.scale = 1.0f / 12.0f;//((l.range.y - l.range.x) * 0.4f);
+    camera.scale = 1.0f / 8.0f;//((l.range.y - l.range.x) * 0.4f);
 
     range = l.range;
 }

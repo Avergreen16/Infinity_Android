@@ -465,7 +465,7 @@ void Renderer::init() {
     std::shared_ptr<Framebuffer> fb0(new Framebuffer(fb_size, {{{GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE}, GL_COLOR_ATTACHMENT0, 0}}));
     framebuffers.push_back(fb0);
 
-    fb_size = ivec2(32);
+    fb_size = ivec2(64);
     std::shared_ptr<Framebuffer> fb1(new Framebuffer(fb_size, {{{GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE}, GL_COLOR_ATTACHMENT0, 0}}));
     framebuffers.push_back(fb1);
 }
@@ -515,24 +515,25 @@ void Renderer::call() {
     Camera2D& camera_camera = ecs.get_component<Camera2D>(camera);
     Transform2D& camera_transform = ecs.get_component<Transform2D>(camera);
 
-    Collider& player_collider = ecs.get_component<Collider>(is.player_entity);
-    Transform2D& player_transform = ecs.get_component<Transform2D>(is.player_entity);
+    Soft_body& player_soft_body = ecs.get_component<Soft_body>(is.player_entity);
+    //Collider& player_collider = ecs.get_component<Collider>(is.player_entity);
+    //Transform2D& player_transform = ecs.get_component<Transform2D>(is.player_entity);
 
     vec2 screen_size = ratio * 2.0f / camera_camera.scale;
     vec4 center_region = vec4(camera_transform.position - screen_size * 0.125f, camera_transform.position + screen_size * 0.125f);
 
     vec2 new_pos = camera_transform.position;
 
-    if(player_transform.position.x < center_region.x) {
-        new_pos.x += player_transform.position.x - center_region.x;
-    } else if(player_transform.position.x > center_region.z) {
-        new_pos.x += player_transform.position.x - center_region.z;
+    if(player_soft_body.target_center.x < center_region.x) {
+        new_pos.x += player_soft_body.target_center.x - center_region.x;
+    } else if(player_soft_body.target_center.x > center_region.z) {
+        new_pos.x += player_soft_body.target_center.x - center_region.z;
     }
 
-    if(player_transform.position.y < center_region.y) {
-        new_pos.y += player_transform.position.y - center_region.y;
-    } else if(player_transform.position.y > center_region.w) {
-        new_pos.y += player_transform.position.y - center_region.w;
+    if(player_soft_body.target_center.y < center_region.y) {
+        new_pos.y += player_soft_body.target_center.y - center_region.y;
+    } else if(player_soft_body.target_center.y > center_region.w) {
+        new_pos.y += player_soft_body.target_center.y - center_region.w;
     }
 
     vec4 new_range = vec4(new_pos - screen_size * 0.5f, new_pos + screen_size * 0.5f);
@@ -581,8 +582,8 @@ void Renderer::call() {
 
     for(uint32_t entity : collectors[0].entities) render_mesh(entity);
     for(uint32_t entity : collectors[1].entities) render_sprite(entity);
-    for(uint32_t entity : collectors[2].entities) render_soft_body(entity);
-    //render_slime(is.player_entity);
+    for(uint32_t entity : collectors[2].entities) render_slime(entity);
+    //
     render_points();
 
     //framebuffers[0]->bind();
@@ -1047,24 +1048,131 @@ void Renderer::render_buttons() {
 }
 
 
+struct Tex_vertex {
+    vec3 position;
+    vec2 tex_coord;
+};
 
 void Renderer::render_slime(uint32_t entity) {
+    static float look = 0.0f;
+    static float return_look = 0.0f;
+
+    /*
+    layout(location = 0) in vec3 position;
+    layout(location = 0) in vec2 tex_coord;
+
+    layout(location = 0) uniform mat4 proj;
+    layout(location = 1) uniform mat4 view;
+    layout(location = 2) uniform mat4 model;
+    layout(location = 3) uniform vec4 color;
+     */
     Input_system& is = ecs.get_system<Input_system>();
 
-    Transform2D& transform = ecs.get_component<Transform2D>(entity);
+    Soft_body& soft_body = ecs.get_component<Soft_body>(entity);
 
     // slime texture
 
     framebuffers[1]->bind();
 
-    glViewport(0, 0, 32, 32);
+    glViewport(0, 0, 64, 64);
     glDisable(GL_DEPTH_TEST);
     glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
-    core.shaders["slime"]->use();
+    float size = 4.0f;
 
-    glDrawArrays(GL_TRIANGLES, 0, 6);
+    vec2 avg_speed = vec2(0.0f);
+
+    //
+
+    std::vector<Tex_vertex> tris;
+
+    vec2 min_v = vec2(FLT_MAX, FLT_MAX);
+    vec2 max_v = vec2(-FLT_MAX, -FLT_MAX);
+    for(auto p : soft_body.points) {
+        min_v = min(min_v, p.position);
+        max_v = max(max_v, p.position);
+    }
+    vec2 center = (min_v + max_v) * 0.5f;
+    vec2 prev = center;
+    center = (round(center * 16.0f)) / 16.0f;
+    prev -= center;
+
+    std::vector<vec2> offsets(soft_body.points.size(), vec2(0.0f));
+
+    for(int i = 0; i < soft_body.points.size(); ++i) {
+        vec2 a = soft_body.points[(i - 1 + soft_body.points.size()) % soft_body.points.size()].position;
+        vec2 b = soft_body.points[i].position;
+        vec2 c = soft_body.points[(i + 1) % soft_body.points.size()].position;
+
+        vec2 normal_a = normalize(b - a);
+        vec2 normal_b = normalize(c - b);
+
+        normal_a = vec2(normal_a.y, -normal_a.x);
+        normal_b = vec2(normal_b.y, -normal_b.x);
+
+        vec2 n = normalize(normal_a + normal_b) * soft_body.inflate;
+
+        offsets[i] = n;
+
+        avg_speed += soft_body.points[i].velocity;
+    }
+
+    avg_speed /= float(soft_body.points.size());
+
+    for(int i = 0; i < soft_body.points.size(); ++i) {
+        vec2 a = soft_body.points[i].position + offsets[i];
+        vec2 b = soft_body.points[(i + 1) % soft_body.points.size()].position + offsets[(i + 1) % soft_body.points.size()];
+
+        a = a - center;//round((a - center) * 16.0f) / 16.0f;
+        b = b - center;//round((b - center) * 16.0f) / 16.0f;
+
+        vec2 aa = soft_body.target_ori * soft_body.targets[i];
+        vec2 bb = soft_body.target_ori * soft_body.targets[(i + 1) % soft_body.points.size()];
+
+        aa = (normalize(a) * 0.5f + 0.5f) * 24.0f;
+        bb = (normalize(b) * 0.5f + 0.5f) * 24.0f;
+        vec2 cc = vec2(0.5f) * 24.0f;
+
+        Tex_vertex v;
+
+        v.position = vec3(a, 0.5f);
+        v.tex_coord = aa;
+        tris.push_back(v);
+        v.position = vec3(b, 0.5f);
+        v.tex_coord = bb;
+        tris.push_back(v);
+        v.position = vec3(0.0f, 0.0f, 0.5f);
+        v.tex_coord = cc;
+        tris.push_back(v);
+    }
+
+    //
+
+    float sc = 2.0f / size;
+
+    mat4 view = scale(vec3(sc, sc, 1.0f));
+    mat4 proj = identity<mat4>();
+    mat4 model = identity<mat4>();
+
+    core.shaders["texture"]->use();
+    core.textures["slime"]->bind(0);
+
+    vec3 color = vec3(1.0f);
+
+    //
+
+    vertices->vertex_buffer_data(tris.data(), tris.size(), sizeof(Object_vertex), GL_STREAM_DRAW);
+    vertices->add_vertex_attribute(0, 3, GL_FLOAT, false, sizeof(float) * 5, 0);
+    vertices->add_vertex_attribute(1, 2, GL_FLOAT, false, sizeof(float) * 5, sizeof(float) * 3);
+    vertices->bind();
+
+    glUniformMatrix4fv(0, 1, false, &proj[0][0]);
+    glUniformMatrix4fv(1, 1, false, &view[0][0]);
+    glUniformMatrix4fv(2, 1, false, &model[0][0]);
+    glUniform4f(3, color.x, color.y, color.z,  1.0f);
+
+    vertices->draw_vertices(GL_TRIANGLES);
 
     // slime render
 
@@ -1076,12 +1184,12 @@ void Renderer::render_slime(uint32_t entity) {
 
     mat4 inv_rot = mat4(transpose(ct.orientation));
 
-    mat4 view = inv_rot * scale(vec3(cc.scale, cc.scale, 1.0f)) * translate(vec3(-ct.position, 0.0f));
+    view = inv_rot * scale(vec3(cc.scale, cc.scale, 1.0f)) * translate(vec3(-ct.position, 0.0f));
 
     float aspect_ratio = float(screen_size.y) / screen_size.x;
-    mat4 proj = cc.proj;
+    proj = cc.proj;
 
-    mat4 model = translate(vec3(transform.position, 0.0f)) * mat4(transform.orientation);
+    model = translate(vec3(center, 0.0f));
 
     core.shaders["sprite"]->use();
 
@@ -1097,15 +1205,73 @@ void Renderer::render_slime(uint32_t entity) {
 
     framebuffers[1]->textures[0].bind(0);
 
-    vec3 light = vec3(0.5f, -0.5f, 1.0f);
+    glUniformMatrix4fv(0, 1, false, &proj[0][0]);
+    glUniformMatrix4fv(1, 1, false, &view[0][0]);
+    glUniformMatrix4fv(2, 1, false, &model[0][0]);
+    glUniform2f(3, 1.0f * size, 1.0f * size); // size
+    glUniform2f(4, -0.5f * size, -0.5f * size); // offset
+    glUniform4f(5, 0.0f, 0.0f, 1.0f, 1.0f); // range
+
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+
+    // render face
+
+    std::vector<Tex_vertex> vs;
+    vs = {
+            Tex_vertex{vec3(0.0f, 0.0f, 0.0f), vec2(0.0f, 0.0f)},
+            Tex_vertex{vec3(1.0f, 0.0f, 0.0f), vec2(1.0f, 0.0f)},
+            Tex_vertex{vec3(1.0f, 1.0f, 0.0f), vec2(1.0f, 1.0f)},
+            Tex_vertex{vec3(0.0f, 0.0f, 0.0f), vec2(0.0f, 0.0f)},
+            Tex_vertex{vec3(1.0f, 1.0f, 0.0f), vec2(1.0f, 1.0f)},
+            Tex_vertex{vec3(0.0f, 1.0f, 0.0f), vec2(0.0f, 1.0f)},
+    };
+
+    if(abs(avg_speed.x) > 1.5f) {
+        look += core.delta_time * sign(avg_speed.x) * 5.0f;
+        return_look = 0.25f;
+    } else {
+        return_look -= core.delta_time;
+        if(return_look <= 0.0f) {
+            float sg = sign(look);
+            look -= core.delta_time * sg * 2.0f;
+            if(sg != sign(look)) look = 0.0f;
+        }
+    }
+    look = clamp(look, -1.0f, 1.0f);
+
+    float width_b = ((max_v.x - min_v.x) * 0.5f - 17.0f / 16.0f * 0.5f - 0.0625f);
+    width_b = max(width_b, 0.0f);
+
+    vec2 face_size = vec2(17, 6);
+    vec2 face_tex_pos = vec2(24, 0);
+
+    for(Tex_vertex& tv : vs) {
+        tv.position.x *= face_size.x / 16.0f;
+        tv.position.y *= face_size.y / 16.0f;
+
+        tv.tex_coord = tv.tex_coord * face_size + face_tex_pos;
+    }
+
+    vertices->vertex_buffer_data( vs.data(), vs.size(), sizeof(Object_vertex), GL_STREAM_DRAW);
+    vertices->add_vertex_attribute(0, 3, GL_FLOAT, false, sizeof(float) * 5, 0);
+    vertices->add_vertex_attribute(1, 2, GL_FLOAT, false, sizeof(float) * 5, sizeof(float) * 3);
+    vertices->bind();
+
+    vec2 face_pos = center - face_size / 16.0f * 0.5f;
+    face_pos.x += look * width_b;
+
+    face_pos = round(face_pos * 16.0f) / 16.0f;
+
+    core.shaders["texture"]->use();
+    core.textures["slime"]->bind(0);
+
+    model = translate(vec3(face_pos, 0.0f));
 
     glUniformMatrix4fv(0, 1, false, &proj[0][0]);
     glUniformMatrix4fv(1, 1, false, &view[0][0]);
     glUniformMatrix4fv(2, 1, false, &model[0][0]);
-    glUniform2f(3, 2.0f, 2.0f); // size
-    glUniform2f(4, -1.0f, -1.0f); // offset
-    glUniform4f(5, 0.0f, 0.0f, 1.0f, 1.0f); // range
+    glUniform4f(3, color.x, color.y, color.z,  1.0f);
 
-    glDrawArrays(GL_TRIANGLES, 0, 6);
+    vertices->draw_vertices(GL_TRIANGLES);
 }
 
