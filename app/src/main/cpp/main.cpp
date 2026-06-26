@@ -45,6 +45,8 @@ void handle_cmd(android_app *app, int32_t cmd) {
             core.textures.emplace("text", std::shared_ptr<Texture>(new Texture("textures/text_mono.png", {GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE}, 4)));
             core.textures.emplace("gui", std::shared_ptr<Texture>(new Texture("textures/icons.png", {GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE}, 4)));
             core.textures.emplace("slime", std::shared_ptr<Texture>(new Texture("textures/slime.png", {GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE}, 4)));
+            core.textures.emplace("robot_small", std::shared_ptr<Texture>(new Texture("textures/robot_small.png", {GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE}, 4)));
+            core.textures.emplace("robot_big", std::shared_ptr<Texture>(new Texture("textures/robot_big.png", {GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE}, 4)));
 
             /*
              * when the context got reset, all of the vertex buffers got turned off...
@@ -325,6 +327,59 @@ void android_main(android_app* app) {
             ecs.insert_component(entity, b);
 
             input_system.player_entity = entity;
+
+            //
+            {
+                Transform2D transform;
+                Collider collider;
+                Sprite sprite;
+                sprite.color_tex = core.textures["robot_big"];
+                sprite.size = vec3(3.0);
+                sprite.range = vec4(0.0f, 0.0f, 1.0f, 1.0f);
+                sprite.offset = vec2(-1.5f, -1.0f);
+
+                Collision_shape shape2;
+                shape2.vertices = {vec2(0.0f)};
+                shape2.radius = vec2(1.0f);
+                shape2.mass = 40.0f;
+                collider.shapes.push_back(shape2);
+                collider.allow_rotation = false;
+                collider.mass = 40.0f;
+
+                transform.position = vec2(5.0f, 5.0f);
+                transform.orientation = identity<mat2>();
+
+                entity = ecs.insert_entity();
+                ecs.insert_component(entity, transform);
+                ecs.insert_component(entity, collider);
+                ecs.insert_component(entity, sprite);
+            }
+
+            {
+                Transform2D transform;
+                Collider collider;
+                Sprite sprite;
+                sprite.color_tex = core.textures["robot_small"];
+                sprite.size = vec3(1.0);
+                sprite.range = vec4(0.0f, 0.0f, 1.0f, 1.0f);
+                sprite.offset = vec2(-0.5f, -0.5f);
+
+                Collision_shape shape2;
+                shape2.vertices = {vec2(0.0f)};
+                shape2.radius = vec2(0.5f);
+                shape2.mass = 40.0f;
+                collider.shapes.push_back(shape2);
+                collider.allow_rotation = false;
+                collider.mass = 40.0f;
+
+                transform.position = vec2(8.0f, 5.0f);
+                transform.orientation = identity<mat2>();
+
+                entity = ecs.insert_entity();
+                ecs.insert_component(entity, transform);
+                ecs.insert_component(entity, collider);
+                ecs.insert_component(entity, sprite);
+            }
 
             //
 

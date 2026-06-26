@@ -845,7 +845,7 @@ void Renderer::render_sprite(uint32_t entity) {
     */
 
     sprite.color_tex->bind(0);
-    sprite.normal_tex->bind(1);
+    //sprite.normal_tex->bind(1);
 
     vec3 light = vec3(0.5f, -0.5f, 1.0f);
 
