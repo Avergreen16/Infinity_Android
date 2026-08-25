@@ -308,81 +308,6 @@ void android_main(android_app* app) {
 
             //
 
-            Soft_body b;
-
-            float num = 16;
-
-            std::vector<vec2> vs;
-
-            for(int i = 0; i < num; ++i) {
-                float angle = float(i) / num * 2 * M_PI;
-
-                vec2 v = vec2(cos(angle), sin(angle)) * (0.75f - b.inflate);
-
-                vs.push_back(v);
-            }
-            b.create(vs, vec2(0.0f, 5.0f), 40.0f);
-
-            uint32_t entity = ecs.insert_entity();
-            ecs.insert_component(entity, b);
-
-            input_system.player_entity = entity;
-
-            //
-            {
-                Transform2D transform;
-                Collider collider;
-                Sprite sprite;
-                sprite.color_tex = core.textures["robot_big"];
-                sprite.size = vec3(3.0);
-                sprite.range = vec4(0.0f, 0.0f, 1.0f, 1.0f);
-                sprite.offset = vec2(-1.5f, -1.0f);
-
-                Collision_shape shape2;
-                shape2.vertices = {vec2(0.0f)};
-                shape2.radius = vec2(1.0f);
-                shape2.mass = 40.0f;
-                collider.shapes.push_back(shape2);
-                collider.allow_rotation = false;
-                collider.mass = 40.0f;
-
-                transform.position = vec2(5.0f, 5.0f);
-                transform.orientation = identity<mat2>();
-
-                entity = ecs.insert_entity();
-                ecs.insert_component(entity, transform);
-                ecs.insert_component(entity, collider);
-                ecs.insert_component(entity, sprite);
-            }
-
-            {
-                Transform2D transform;
-                Collider collider;
-                Sprite sprite;
-                sprite.color_tex = core.textures["robot_small"];
-                sprite.size = vec3(1.0);
-                sprite.range = vec4(0.0f, 0.0f, 1.0f, 1.0f);
-                sprite.offset = vec2(-0.5f, -0.5f);
-
-                Collision_shape shape2;
-                shape2.vertices = {vec2(0.0f)};
-                shape2.radius = vec2(0.5f);
-                shape2.mass = 40.0f;
-                collider.shapes.push_back(shape2);
-                collider.allow_rotation = false;
-                collider.mass = 40.0f;
-
-                transform.position = vec2(8.0f, 5.0f);
-                transform.orientation = identity<mat2>();
-
-                entity = ecs.insert_entity();
-                ecs.insert_component(entity, transform);
-                ecs.insert_component(entity, collider);
-                ecs.insert_component(entity, sprite);
-            }
-
-            //
-
             c.is_static = true;
 
             c.create_BVH();
@@ -392,7 +317,7 @@ void android_main(android_app* app) {
             create_mesh(m, c);
 
 
-            entity = ecs.insert_entity();
+            uint32_t entity = ecs.insert_entity();
 
             ecs.insert_component(entity, m);
             ecs.insert_component(entity, t);
